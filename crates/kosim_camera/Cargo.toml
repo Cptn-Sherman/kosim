@@ -5,3 +5,22 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
+avian3d = "0.4.1"
+bevy_asset = "0.17.3"
+bevy_camera = "0.17.3"
+bevy_core_pipeline = "0.17.3"
+bevy_ecs = "0.17.3"
+bevy_input = "0.17.3"
+bevy_kira_audio = "0.24.0"
+bevy_light = "0.17.3"
+bevy_math = "0.17.3"
+bevy_pbr = "0.17.3"
+bevy_reflect = "0.17.3"
+bevy_render = "0.17.3"
+bevy_time = "0.17.3"
+bevy_transform = "0.17.3"
+bevy_utils = "0.17.3"
+bevy_window = "0.17.3"
+chrono = "0.4.42"
+kosim_input = { version = "0.1.0", path = "../kosim_input" }
+kosim_utility = { version = "0.1.0", path = "../kosim_utility" }

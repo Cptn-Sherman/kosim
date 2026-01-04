@@ -22,7 +22,7 @@ pub fn initial_cursor_center(mut primary_window: Query<&mut Window, With<Primary
     if let Ok(mut window) = primary_window.single_mut() {
         center_cursor(&mut window);
     } else {
-        warn!("Primary window not found for `initial_cursor_center`!");
+        // FIXME: warn!("Primary window not found for `initial_cursor_center`!");
     }
 }
 
@@ -37,17 +37,18 @@ pub fn detect_toggle_cursor_system(
             toggle_cursor_grab_mode(&mut window, cursor_options);
         }
     } else {
-        warn!("Primary window not found for `detect_toggle_cursor`!");
+        // FIXME: warn!("Primary window not found for `detect_toggle_cursor`!");
     }
 }
 
 fn set_cursor_grab_mode(mut cursor_options: Single<&mut CursorOptions>, grab_mode: CursorGrabMode) {
     cursor_options.grab_mode = grab_mode;
     cursor_options.visible = ternary!(grab_mode == CursorGrabMode::None, true, false);
-    info!(
-        "Setting window grab mode: {}",
-        grab_mode_stringified(&grab_mode)
-    );
+    //  FIXME: 
+    // info!(
+    //     "Setting window grab mode: {}",
+    //     grab_mode_stringified(&grab_mode)
+    // );
 }
 
 // Sets the cursor to the center of the window.

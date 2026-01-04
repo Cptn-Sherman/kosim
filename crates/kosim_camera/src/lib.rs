@@ -1,24 +1,25 @@
-use crate::{
-    config::Bindings, input::Input, player::Player, utils::{exp_decay, InterpolatedValue}
-};
 use avian3d::prelude::TransformInterpolation;
-use bevy::{
-    camera::Exposure, core_pipeline::tonemapping::Tonemapping, light::VolumetricFog, math::Vec3, pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings}, prelude::*, utils::default
-};
+use bevy_asset::{AssetServer, Handle};
+use bevy_camera::{Camera, Camera3d, Exposure};
+use bevy_core_pipeline::tonemapping::Tonemapping;
+use bevy_ecs::component::Component;
+use bevy_ecs::event::Event;
+use bevy_ecs::prelude::*;
+use bevy_ecs::resource::Resource;
+use bevy_input::{ButtonInput, keyboard::KeyCode};
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
-
-use bevy::{
-    input::ButtonInput,
-    prelude::{Commands, Entity, KeyCode, Query, Res, With},
-    render::view::screenshot::{save_to_disk, Screenshot},
-};
+use bevy_light::VolumetricFog;
+use bevy_math::{EulerRot, Quat, Vec3};
+use bevy_pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings};
+use bevy_render::view::screenshot::{save_to_disk, Screenshot};
+use bevy_time::Time;
+use bevy_transform::components::Transform;
+use bevy_utils::default;
+use kosim_input::binding::Bindings;
+use kosim_input::input::Input;
+use kosim_utility::interpolated_value::InterpolatedValue;
+use kosim_utility::{exp_decay, get_valid_extension};
 use chrono::Local;
-
-use crate::{
-    config::EngineSettings,
-    utils::{self, get_valid_extension},
-};
-
 #[derive(Component)]
 pub struct GameCamera;
 
@@ -95,7 +96,11 @@ pub fn move_free_camera(
         || free_entity_query.is_empty()
         || free_entity_query.iter().len() > 1
     {
-        warn!("Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!", camera_query.iter().len(), free_entity_query.iter().len());
+        warn!(
+            "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
+            camera_query.iter().len(),
+            free_entity_query.iter().len()
+        );
         return;
     }
 
@@ -213,7 +218,7 @@ pub fn smooth_camera(
     let (yaw, pitch, _) = camera_transform.rotation.to_euler(EulerRot::default());
     //let pitch = input_vector.y * rotation_amount.to_radians();
     let roll: f32 = -1.0 * input.movement_raw.x * ROTATION_AMOUNT.to_radians();
-    
+
     // Set the new target lean and lerp the current value at a constant rate
     // ! for now we will use the constant value 2.0 for lerping. We can probably replace this by just seeing how fast the camera is moving? check the velocity
     let lean_decay: f32 = 2.0; // ternary!(motion.sprinting, 2.0, 8.0);
@@ -302,10 +307,7 @@ pub fn take_screenshot(
     let path: String = format!(
         "./kosim-{}.{}",
         Local::now().format("%Y-%m-%d_%H-%M-%S%.3f").to_string(),
-        get_valid_extension(
-            &settings.screenshot_format,
-            utils::ExtensionType::Screenshot
-        )
+        get_valid_extension(&settings.screenshot_format, kosim_utility::ExtensionType::Screenshot)
     );
 
     commands
