@@ -12,7 +12,7 @@ pub struct Binding {
     pub button: GamepadButton,
 }
 
-/// Key configuration
+// Key configuration
 #[derive(Resource)]
 pub struct Bindings {
     pub move_forward: KeyCode,
