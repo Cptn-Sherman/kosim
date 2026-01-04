@@ -5,3 +5,7 @@ license = "Apache-2.0"
 edition = "2024"
 
 [dependencies]
+kosim_camera = { version = "0.1.0", path = "crates/kosim_camera" }
+kosim_input = { version = "0.1.0", path = "crates/kosim_input" }
+kosim_player = { version = "0.1.0", path = "crates/kosim_player" }
+kosim_utility = { version = "0.1.0", path = "crates/kosim_utility" }
