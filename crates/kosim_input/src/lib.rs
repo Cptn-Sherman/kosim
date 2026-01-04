@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod binding;
+pub mod cursor;
+pub mod input;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+use bevy_ecs::resource::Resource;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[derive(Resource)]
+pub struct InputConfig {
+    pub sensitivity: f32,
+    pub gamepad_look_sensitivity: f32,
+    pub mouse_look_sensitivity: f32,
 }
