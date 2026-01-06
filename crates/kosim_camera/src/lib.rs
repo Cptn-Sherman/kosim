@@ -9,30 +9,38 @@ use bevy_ecs::resource::Resource;
 use bevy_input::{ButtonInput, keyboard::KeyCode};
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
 use bevy_light::VolumetricFog;
-use bevy_math::{EulerRot, Quat, Vec3};
+use bevy_math::Vec3;
 use bevy_pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings};
-use bevy_render::view::screenshot::{save_to_disk, Screenshot};
-use bevy_time::Time;
+use bevy_render::view::screenshot::{Screenshot, save_to_disk};
 use bevy_transform::components::Transform;
 use bevy_utils::default;
-use kosim_input::binding::Bindings;
-use kosim_input::input::Input;
-use kosim_utility::interpolated_value::InterpolatedValue;
-use kosim_utility::{exp_decay, get_valid_extension};
 use chrono::Local;
-#[derive(Component)]
-pub struct GameCamera;
+use kosim_input::binding::Bindings;
+use kosim_utility::get_valid_extension;
+use kosim_utility::interpolated_value::InterpolatedValue;
+
+use crate::first_person_camera::SmoothedCamera;
+use crate::freecam::FreeCamera;
+
+pub mod first_person_camera;
+pub mod freecam;
+pub mod third_person_camera;
 
 #[derive(Resource)]
 pub struct CameraConfig {
     pub hdr: bool,
+    pub fov: f32,
+    pub screenshot_format: String,
 }
 
 impl Default for CameraConfig {
     fn default() -> Self {
-        Self { hdr: true }
+        Self { hdr: true, fov: 75.0, screenshot_format: "png".into() }
     }
 }
+
+#[derive(Component)]
+pub struct GameCamera;
 
 pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
     let _ = camera_config;
@@ -63,16 +71,6 @@ pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
         });
 }
 
-#[derive(Component)]
-pub struct FreeCamera;
-
-pub fn create_free_camera(mut commands: Commands) {
-    commands.spawn((
-        Transform::from_xyz(0.0, 5.0, 0.0).looking_to(Vec3::ZERO, Vec3::Y),
-        FreeCamera,
-    ));
-}
-
 #[derive(Message, Event, Clone)]
 pub struct ToggleCameraEvent {
     mode: CameraMode,
@@ -81,59 +79,8 @@ pub struct ToggleCameraEvent {
 #[derive(Clone)]
 pub enum CameraMode {
     FirstPerson,
+    ThirdPerson,
     FreeCam,
-}
-
-pub fn move_free_camera(
-    camera_query: Query<&mut Transform, (With<Camera3d>, Without<FreeCamera>)>,
-    mut free_entity_query: Query<&mut Transform, With<FreeCamera>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    key_bindings: Res<Bindings>,
-    time: Res<Time>,
-) {
-    if camera_query.is_empty()
-        || camera_query.iter().len() > 1
-        || free_entity_query.is_empty()
-        || free_entity_query.iter().len() > 1
-    {
-        warn!(
-            "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
-            camera_query.iter().len(),
-            free_entity_query.iter().len()
-        );
-        return;
-    }
-
-    let camera_transform: &Transform = camera_query.iter().next().unwrap();
-
-    for mut transform in free_entity_query.iter_mut() {
-        let mut movement_vector: Vec3 = Vec3::ZERO.clone();
-        let speed_vector: Vec3 = Vec3::from([20.0, 20.0, 20.0]);
-        // WASD Movement
-        if keys.pressed(key_bindings.move_forward) {
-            movement_vector += camera_transform.forward().as_vec3();
-        }
-        if keys.pressed(key_bindings.move_backward) {
-            movement_vector += camera_transform.back().as_vec3();
-        }
-        if keys.pressed(key_bindings.move_left) {
-            movement_vector += camera_transform.left().as_vec3();
-        }
-        if keys.pressed(key_bindings.move_right) {
-            movement_vector += camera_transform.right().as_vec3();
-        }
-        // Ascend and Descend
-        if keys.pressed(key_bindings.move_ascend) {
-            movement_vector += Vec3::Y;
-        }
-        if keys.pressed(key_bindings.move_descend) {
-            movement_vector -= Vec3::Y;
-        }
-
-        // Scale the vector by the elapsed time.
-        movement_vector *= speed_vector * time.delta_secs();
-        transform.translation += movement_vector;
-    }
 }
 
 pub fn swap_camera_target(
@@ -196,55 +143,6 @@ pub fn swap_camera_target(
     }
 }
 
-#[derive(Component)]
-pub struct SmoothedCamera {
-    pub lean: InterpolatedValue<Vec3>,
-    pub lock_lean: f32,
-}
-pub const ROTATION_AMOUNT: f32 = 4.0;
-pub const LEAN_LOCKOUT_TIME: f32 = 0.15;
-
-pub fn smooth_camera(
-    mut camera_query: Query<
-        (&mut Transform, &mut SmoothedCamera),
-        (With<Camera3d>, Without<Player>),
-    >,
-    input: Res<Input>,
-    time: Res<Time>,
-) {
-    let (mut camera_transform, mut smoothed_camera) = camera_query.single_mut().unwrap();
-
-    // Update the Curent Lean
-    let (yaw, pitch, _) = camera_transform.rotation.to_euler(EulerRot::default());
-    //let pitch = input_vector.y * rotation_amount.to_radians();
-    let roll: f32 = -1.0 * input.movement_raw.x * ROTATION_AMOUNT.to_radians();
-
-    // Set the new target lean and lerp the current value at a constant rate
-    // ! for now we will use the constant value 2.0 for lerping. We can probably replace this by just seeing how fast the camera is moving? check the velocity
-    let lean_decay: f32 = 2.0; // ternary!(motion.sprinting, 2.0, 8.0);
-    if smoothed_camera.lock_lean > 0.0 {
-        smoothed_camera.lock_lean -= time.delta_secs();
-    } else {
-        smoothed_camera.lean.target = Vec3::from_array([yaw, pitch, roll]);
-    }
-
-    // Interpolate the smoothed camera lean.
-    smoothed_camera.lean.current = exp_decay::<Vec3>(
-        smoothed_camera.lean.current,
-        smoothed_camera.lean.target,
-        lean_decay,
-        time.delta_secs(),
-    );
-
-    // Apply the lean to the camera transformation.
-    camera_transform.rotation = Quat::from_euler(
-        EulerRot::default(),
-        yaw, // we dont change the yaw.
-        pitch,
-        smoothed_camera.lean.current.z,
-    );
-}
-
 #[derive(Resource)]
 pub struct ToggleCameraFreeModeAudioHandle(Handle<AudioSource>);
 
@@ -290,13 +188,16 @@ pub fn play_toggle_camera_soundfx(
                 .play(free_handle.0.clone())
                 .with_volume(volume);
         }
+        CameraMode::ThirdPerson => {
+            // TODO: No sound for third person camera for now.
+        },
     }
 }
 
 /** This system was taken from the screenshot example: https://bevyengine.org/examples/Window/screenshot/ */
 pub fn take_screenshot(
     mut commands: Commands,
-    settings: Res<EngineSettings>,
+    settings: Res<CameraConfig>,
     bindings: Res<Bindings>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
@@ -307,7 +208,10 @@ pub fn take_screenshot(
     let path: String = format!(
         "./kosim-{}.{}",
         Local::now().format("%Y-%m-%d_%H-%M-%S%.3f").to_string(),
-        get_valid_extension(&settings.screenshot_format, kosim_utility::ExtensionType::Screenshot)
+        get_valid_extension(
+            &settings.screenshot_format,
+            kosim_utility::ExtensionType::Screenshot
+        )
     );
 
     commands
