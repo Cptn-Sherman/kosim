@@ -24,6 +24,7 @@ pub struct Bindings {
     pub action_sprint: Binding,
     pub action_interact: Binding,
     pub action_toggle_crouched: Binding,
+    pub action_enable_freelook: Binding,
     pub action_screenshot: Binding,
     pub action_toggle_cursor_focus: KeyCode,
     pub action_toggle_camera_mode: KeyCode,
@@ -58,6 +59,10 @@ impl Default for Bindings {
             },
             action_toggle_camera_mode: KeyCode::F3,
             action_close_application: KeyCode::Escape,
+            action_enable_freelook: Binding {
+                key: KeyCode::AltLeft,
+                button: GamepadButton::Z, // <-- idk what key to use here.
+            },
         }
     }
 }

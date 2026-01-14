@@ -194,6 +194,11 @@ pub fn play_toggle_camera_soundfx(
     }
 }
 
+#[derive(Resource)]
+pub struct CameraSettings {
+    pub screenshot_format: String,
+}
+
 /** This system was taken from the screenshot example: https://bevyengine.org/examples/Window/screenshot/ */
 pub fn take_screenshot(
     mut commands: Commands,
