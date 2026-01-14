@@ -4,6 +4,7 @@ use bevy_math::{EulerRot, Quat, Vec3};
 use bevy_time::Time;
 use bevy_transform::components::Transform;
 use kosim_input::input::Input;
+use kosim_player::Player;
 use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
 
 #[derive(Component)]

@@ -23,4 +23,5 @@ bevy_utils = "0.17.3"
 bevy_window = "0.17.3"
 chrono = "0.4.42"
 kosim_input = { version = "0.1.0", path = "../kosim_input" }
+kosim_player = { version = "0.1.0", path = "../kosim_player" }
 kosim_utility = { version = "0.1.0", path = "../kosim_utility" }

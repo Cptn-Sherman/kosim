@@ -16,6 +16,7 @@ use bevy_transform::components::Transform;
 use bevy_utils::default;
 use chrono::Local;
 use kosim_input::binding::Bindings;
+use kosim_player::Player;
 use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
@@ -98,17 +99,17 @@ pub fn swap_camera_target(
 
     let mut valid_queries: bool = true;
     if player_query.is_empty() {
-        warn!("Player Query was empty, cannot swap camera parent target!");
+        // warn!("Player Query was empty, cannot swap camera parent target!");
         valid_queries = false;
     }
 
     if free_camera_query.is_empty() {
-        warn!("Fly Camera Query was empty, cannot swap camera parent target!");
+        // warn!("Fly Camera Query was empty, cannot swap camera parent target!");
         valid_queries = false;
     }
 
     if camera_query.is_empty() {
-        warn!("Camera Query was empty, cannot swap camera parent target!");
+        // warn!("Camera Query was empty, cannot swap camera parent target!");
         valid_queries = false;
     }
 
@@ -129,14 +130,14 @@ pub fn swap_camera_target(
     if camera_parent_unwrapped.parent() == player {
         camera_transform.translation = Vec3::from_array([0.0, 0.0, 0.0]);
         commands.entity(free_camera).add_children(&[camera]);
-        info!("Attached camera to fly_camera entity.");
+        // info!("Attached camera to fly_camera entity.");
         ev_toggle_cam.write(ToggleCameraEvent {
             mode: CameraMode::FreeCam,
         });
     } else {
         camera_transform.translation = Vec3::from_array([0.0, 1.0, 0.0]);
         commands.entity(player).add_children(&[camera]);
-        info!("Attached camera to player entity.");
+        // info!("Attached camera to player entity.");
         ev_toggle_cam.write(ToggleCameraEvent {
             mode: CameraMode::FirstPerson,
         });

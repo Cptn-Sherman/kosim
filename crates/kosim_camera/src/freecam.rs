@@ -28,11 +28,11 @@ pub fn move_free_camera(
         || free_entity_query.is_empty()
         || free_entity_query.iter().len() > 1
     {
-        warn!(
-            "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
-            camera_query.iter().len(),
-            free_entity_query.iter().len()
-        );
+        // warn!(
+        //     "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
+        //     camera_query.iter().len(),
+        //     free_entity_query.iter().len()
+        // );
         return;
     }
 

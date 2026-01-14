@@ -2245,6 +2245,7 @@ dependencies = [
  "bevy_window",
  "chrono",
  "kosim_input",
+ "kosim_player",
  "kosim_utility",
 ]
 
@@ -2256,6 +2257,20 @@ dependencies = [
  "bevy_input",
  "bevy_math",
  "bevy_window",
+ "kosim_utility",
+]
+
+[[package]]
+name = "kosim_player"
+version = "0.1.0"
+dependencies = [
+ "bevy_camera",
+ "bevy_ecs",
+ "bevy_input",
+ "bevy_math",
+ "bevy_time",
+ "bevy_transform",
+ "kosim_input",
  "kosim_utility",
 ]
 
