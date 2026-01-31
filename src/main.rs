@@ -1,13 +1,32 @@
 use std::time::Duration;
 
-use avian3d::{PhysicsPlugins, prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody}};
-use bevy::{asset::RenderAssetUsages, color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200}, dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig}, light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk}, mesh::{Indices, PrimitiveTopology, VertexAttributeValues}, prelude::*, render::render_asset::RenderAssetBytesPerFrame};
+use avian3d::{
+    PhysicsPlugins,
+    prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody},
+};
+use bevy::{
+    asset::RenderAssetUsages,
+    color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
+    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk},
+    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
+    prelude::*,
+    render::render_asset::RenderAssetBytesPerFrame,
+};
 use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween};
 use bevy_turborand::prelude::RngPlugin;
-use kosim_camera::{CameraConfig, ToggleCameraEvent, create_camera, freecam::{create_free_camera, move_free_camera}, load_toggle_camera_soundfxs, play_toggle_camera_soundfx, swap_camera_target, take_screenshot};
-use kosim_input::{binding::Bindings, cursor::{detect_toggle_cursor_system, initial_cursor_center, initial_grab_cursor}, input::{Input, update_input_resource}};
+use kosim_camera::{
+    CameraConfig, ToggleCameraEvent, create_camera,
+    freecam::{create_free_camera, move_free_camera},
+    load_toggle_camera_soundfxs, play_toggle_camera_soundfx, swap_camera_target, take_screenshot,
+};
+use kosim_input::{
+    InputConfig,
+    binding::Bindings,
+    cursor::{detect_toggle_cursor_system, initial_cursor_center, initial_grab_cursor},
+    input::{Input, update_input_resource},
+};
 use kosim_player::PlayerPlugin;
-
 
 #[derive(Component)]
 struct Sun;
@@ -17,7 +36,16 @@ fn main() {
         .init_resource::<Bindings>()
         .insert_resource(RenderAssetBytesPerFrame::new(2_000_000_000))
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
-        .insert_resource(CameraConfig { hdr: true, fov: 75.0, screenshot_format: "png".into() })
+        .insert_resource(CameraConfig {
+            hdr: true,
+            fov: 75.0,
+            screenshot_format: "png".into(),
+        })
+        .insert_resource(InputConfig {
+            sensitivity: 1.0,
+            gamepad_look_sensitivity: 1.0,
+            mouse_look_sensitivity: 1.0,
+        })
         .insert_resource(Input::default())
         .add_plugins((
             DefaultPlugins,
