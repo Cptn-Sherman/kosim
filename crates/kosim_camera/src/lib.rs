@@ -24,8 +24,8 @@ use crate::first_person_camera::SmoothedCamera;
 use crate::freecam::FreeCamera;
 
 pub mod first_person_camera;
-pub mod freecam;
 pub mod third_person_camera;
+pub mod freecam;
 
 #[derive(Resource)]
 pub struct CameraConfig {

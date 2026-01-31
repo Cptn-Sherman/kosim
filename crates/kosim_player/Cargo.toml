@@ -10,6 +10,18 @@ bevy_ecs = "0.17.3"
 bevy_input = "0.17.3"
 bevy_math = "0.17.3"
 bevy_time = "0.17.3"
+bevy_text = "0.17.3"
+bevy_color = "0.17.3"
+bevy_ui = "0.17.3"
 bevy_transform = "0.17.3"
+bevy_kira_audio = { version = "0.24.0", features = ["wav"] }
+bevy_turborand = "0.12.0"
+avian3d = { version = "0.4" }
 kosim_input = { version = "0.1.0", path = "../kosim_input" }
 kosim_utility = { version = "0.1.0", path = "../kosim_utility" }
+kosim_interface = { version = "0.1.0", path = "../kosim_interface" }
+bevy_asset = "0.17.3"
+bevy_utils = "0.17.3"
+bevy_app = "0.17.3"
+bevy_mesh = "0.17.3"
+bevy_pbr = "0.17.3"

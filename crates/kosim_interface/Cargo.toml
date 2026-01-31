@@ -1,0 +1,11 @@
+[package]
+name = "kosim_interface"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy_asset = "0.17.3"
+bevy_color = "0.17.3"
+bevy_ecs = "0.17.3"
+bevy_text = "0.17.3"
+bevy_ui = "0.17.3"
