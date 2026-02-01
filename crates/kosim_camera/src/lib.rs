@@ -40,6 +40,20 @@ impl Default for CameraConfig {
     }
 }
 
+pub struct CameraPlugin;
+
+// impl Plugin for CameraPlugin {
+//     fn build(&self, app: &mut App) {
+//         app
+//             .init_resource::<CameraConfig>()
+//             .add_system(swap_camera_target)
+//             .add_system(load_toggle_camera_soundfxs)
+//             .add_system(play_toggle_camera_soundfx)
+//             .add_system(take_screenshot);
+//     }
+// }
+
+
 #[derive(Component)]
 pub struct GameCamera;
 

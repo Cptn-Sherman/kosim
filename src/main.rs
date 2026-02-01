@@ -67,7 +67,7 @@ fn main() {
                 },
             },
             // bevy_panic_handler::PanicHandler::new().build(),
-            //TemporalAntiAliasPlugin,
+            // TemporalAntiAliasPlugin,
             // AtmospherePlugin,
             // BlockoutPlugin,
             // InfiniteGridPlugin,
