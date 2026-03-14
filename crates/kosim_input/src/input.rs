@@ -33,6 +33,11 @@ impl Default for Input {
     }
 }
 
+pub fn clear_input_resource(mut input: ResMut<Input>) {
+    input.movement_raw = Vec3::ZERO;
+    input.focus_delta = Vec2::ZERO;
+}
+
 pub fn update_input_resource(
     mut input: ResMut<Input>,
     accumulated_mouse_motion: ResMut<AccumulatedMouseMotion>,
@@ -42,27 +47,21 @@ pub fn update_input_resource(
     config: Res<InputConfig>,
     key_bindings: Res<Bindings>,
 ) {
-    info!("Accumlated Mouse Motion: {}", format_value_vec2(accumulated_mouse_motion.delta, Some(2), true));
-
-    // this is the raw input vector
-    input.movement_raw = Vec3::ZERO.clone();
-    input.focus_delta = Vec2::ZERO.clone();
-
     if keys.pressed(key_bindings.move_forward) {
-        input.movement_raw.z = 1.0;
+        input.movement_raw.z += 1.0;
     }
     if keys.pressed(key_bindings.move_backward) {
-        input.movement_raw.z = -1.0;
+        input.movement_raw.z += -1.0;
     }
     if keys.pressed(key_bindings.move_left) {
-        input.movement_raw.x = -1.0;
+        input.movement_raw.x += -1.0;
     }
     if keys.pressed(key_bindings.move_right) {
-        input.movement_raw.x = 1.0;
+        input.movement_raw.x += 1.0;
     }
 
-    input.focus_delta.x = config.mouse_look_sensitivity * accumulated_mouse_motion.delta.x;
-    input.focus_delta.y = config.mouse_look_sensitivity * accumulated_mouse_motion.delta.y;
+    input.focus_delta.x += config.mouse_look_sensitivity * accumulated_mouse_motion.delta.x;
+    input.focus_delta.y += config.mouse_look_sensitivity * accumulated_mouse_motion.delta.y;
 
     if let Ok((_entity, gamepad)) = gamepads.single() {
         let left_stick_x: f32 = gamepad.get(GamepadAxis::LeftStickX).unwrap_or_default();
@@ -71,29 +70,29 @@ pub fn update_input_resource(
         let right_stick_y: f32 = gamepad.get(GamepadAxis::RightStickY).unwrap_or_default();
 
         if left_stick_x.abs() > ANALOGE_STICK_DEADZONE {
-            input.movement_raw.x = left_stick_x;
+            input.movement_raw.x += left_stick_x;
         }
 
         if left_stick_y.abs() > ANALOGE_STICK_DEADZONE {
-            input.movement_raw.y = left_stick_y;
+            input.movement_raw.y += left_stick_y;
         }
 
         if let Ok(window) = primary_window.single() {
             let window_scale: f32 = window.height().min(window.width());
 
             if right_stick_x.abs() > ANALOGE_STICK_DEADZONE {
-                input.focus_delta.x = config.gamepad_look_sensitivity * right_stick_x * window_scale
+                input.focus_delta.x += config.gamepad_look_sensitivity * right_stick_x * window_scale
             }
 
             if right_stick_y.abs() > ANALOGE_STICK_DEADZONE {
-                input.focus_delta.y = config.gamepad_look_sensitivity * right_stick_y * window_scale
+                input.focus_delta.y += config.gamepad_look_sensitivity * right_stick_y * window_scale
             }
         }
     }
 
-    // info!(
-    //     "Movement: {}, Direction: {}",
-    //     format_value_vec3(input.movement_raw, Some(2), true),
-    //     format_value_vec2(input.focus_delta, Some(2), true)
-    // );
+    info!(
+        "Movement: {}, Direction: {}",
+        format_value_vec3(input.movement_raw, Some(2), true),
+        format_value_vec2(input.focus_delta, Some(2), true)
+    );
 }
