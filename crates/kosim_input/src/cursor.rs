@@ -6,8 +6,8 @@ use kosim_utility::ternary;
 // * --- Cursor Grab ---
 // Start up system used to capture the mouse.
 // ! There is currently a bug in the x11 implementation which causes this to fail on linux and sets the window to monitor 0.
-// ! The initial cursor grab will succeed but the center will fail.
-pub fn initial_grab_cursor(cursor_options: Single<&mut CursorOptions>) {
+// ! The initial cursor lock will succeed but the center will fail.
+pub fn initial_lock_cursor(cursor_options: Single<&mut CursorOptions>) {
     set_cursor_grab_mode(cursor_options, CursorGrabMode::Locked);
 }
 

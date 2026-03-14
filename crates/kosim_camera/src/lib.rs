@@ -23,7 +23,7 @@ use kosim_input::binding::Bindings;
 use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
-use crate::first_person_camera::{SmoothedCamera, smooth_camera};
+use crate::first_person_camera::{LeanCameraSystem, smooth_camera};
 use crate::freecam::{create_free_camera, move_free_camera};
 
 pub mod first_person_camera;
@@ -59,7 +59,7 @@ impl Plugin for KosimCameraPlugin {
                 (
                     take_screenshot,
                     //swap_camera_target,
-                    smooth_camera,
+                    //smooth_camera,
                     move_free_camera,
                     play_toggle_camera_soundfx,
                 ),
@@ -92,7 +92,7 @@ pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
             Exposure::SUNLIGHT,
             GameCamera,
             TransformInterpolation,
-            SmoothedCamera {
+            LeanCameraSystem {
                 lean: InterpolatedValue::<Vec3>::new(Vec3::from_array([0.0, 0.0, 0.0]), 2.0),
                 lock_lean: 0.0,
             },

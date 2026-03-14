@@ -31,10 +31,10 @@ impl Plugin for KosimInputPlugin {
         
         app.insert_resource(InputConfig::default())
         .insert_resource(binding::Bindings::default())
-        .add_systems(PreStartup, cursor::initial_grab_cursor)
+        .add_systems(PreStartup, cursor::initial_lock_cursor)
         .add_systems(Startup, cursor::initial_cursor_center)
         .add_systems(
-            FixedUpdate,
+            Update,
             (
                 cursor::detect_toggle_cursor_system,
                 input::update_input_resource,

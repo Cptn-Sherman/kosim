@@ -82,7 +82,7 @@ fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<Audio>) {
         .into_inner()
         .play(asset_server.load("audio/liminal-spaces-ambient.ogg"))
         .fade_in(AudioTween::new(
-            Duration::from_millis(18000),
+            Duration::from_millis(8000),
             AudioEasing::InPowf(0.125),
         ))
         .with_volume(-20.0)

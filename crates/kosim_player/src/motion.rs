@@ -203,12 +203,14 @@ pub fn player_rotation_system(
     input: Res<Input>,
 ) {
     for mut player_transform in player_query.iter_mut() {
+        // Get the current rotation components.
         let (mut player_yaw, player_pitch, player_roll) =
             player_transform.rotation.to_euler(EulerRot::default());
-
+        // Ensure the player is not holding down the free look key.
         if !keys.pressed(KeyCode::AltLeft) {
             player_yaw -= (input.focus_delta.x).to_radians();
         }
+        // Apply the current rotation.
         player_transform.rotation =
             Quat::from_euler(EulerRot::default(), player_yaw, player_pitch, player_roll);
     }

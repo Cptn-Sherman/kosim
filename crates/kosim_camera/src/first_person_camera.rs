@@ -6,14 +6,14 @@ pub const ROTATION_AMOUNT: f32 = 4.0;
 pub const LEAN_LOCKOUT_TIME: f32 = 0.15;
 
 #[derive(Component)]
-pub struct SmoothedCamera {
+pub struct LeanCameraSystem {
     pub lean: InterpolatedValue<Vec3>,
     pub lock_lean: f32,
 }
 
 pub fn smooth_camera(
     mut camera_query: Query<
-        (&mut Transform, &mut SmoothedCamera),
+        (&mut Transform, &mut LeanCameraSystem),
         With<Camera3d>,
     >,
     input: Res<Input>,
@@ -24,7 +24,7 @@ pub fn smooth_camera(
     // Update the Curent Lean
     let (yaw, pitch, _) = camera_transform.rotation.to_euler(EulerRot::default());
     //let pitch = input_vector.y * rotation_amount.to_radians();
-    let roll: f32 = -1.0 * input.movement_raw.x * ROTATION_AMOUNT.to_radians();
+    let roll: f32 = -1.0 * input.focus_delta.x * ROTATION_AMOUNT.to_radians();
 
     // Set the new target lean and lerp the current value at a constant rate
     // ! for now we will use the constant value 2.0 for lerping. We can probably replace this by just seeing how fast the camera is moving? check the velocity

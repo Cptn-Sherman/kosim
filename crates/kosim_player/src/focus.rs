@@ -1,4 +1,4 @@
-use bevy::{camera::Camera3d, ecs::{component::Component, query::{With, Without}, system::{Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, math::{EulerRot, Quat}, time::Time, transform::components::Transform};
+use bevy::{camera::Camera3d, ecs::{component::Component, query::{With, Without}, system::{Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, log::info, math::{EulerRot, Quat}, time::Time, transform::components::Transform};
 use kosim_input::{binding::Bindings, input::Input};
 use kosim_utility::exp_decay;
 use crate::Player;
@@ -26,7 +26,7 @@ pub fn camera_look_system(
             camera_yaw -= input.focus_delta.x.to_radians();
             let max_free_look_angle: f32 = 110.0f32.to_radians();
             camera_yaw = camera_yaw.clamp(-max_free_look_angle, max_free_look_angle);
-            // info!("Camera Yaw: {}", camera_yaw);
+            info!("Camera Yaw: {}", camera_yaw);
         } else {
             camera_yaw = exp_decay(camera_yaw, 0.0, 8.0, time.delta_secs());
         }
