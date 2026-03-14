@@ -1,7 +1,7 @@
 use avian3d::prelude::*;
 
-use bevy::{ecs::{bundle::Bundle, component::Component, entity::Entity, message::MessageWriter, query::With, system::{Query, Res}}, math::Vec3, time::Time};
-use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
+use bevy::{ecs::{bundle::Bundle, component::Component, entity::Entity, message::MessageWriter, query::With, system::{Query, Res}}, log::info, math::Vec3, time::Time};
+use kosim_utility::{exp_decay, format_value::format_value_vec3, interpolated_value::InterpolatedValue};
 
 use crate::{Player, actions::step::{DEFAULT_STEP_VOLUME, FootstepDirection, FootstepEvent}, config::PlayerControlConfig, motion::apply_spring_force};
 
@@ -106,10 +106,10 @@ pub fn update_player_stance(
         }
 
         if next_stance != previous_stance {
-            // info!(
-            //     "Stance Changed: {:#?} -> {:#?}",
-            //     previous_stance, next_stance
-            // );
+            info!(
+                "Stance Changed: {:#?} -> {:#?}",
+                previous_stance, next_stance
+            );
         }
 
         // handle footstep sound event when the state has changed and only then.
@@ -219,10 +219,11 @@ pub fn apply_standing_spring_force(
                 ride_height,
             );
         } else {
+            constant_force.0 = Vec3::ZERO;
             gravity_scale.0 = 1.0f32;
         }
-        // info!("External Force: {}", format_value_vec3(external_force.xyz(), Some(3), true));
-        // info!("Gravity Scale: {}", gravity_scale.0);
+        info!("Constant Force: {}", format_value_vec3(constant_force.0, Some(3), true));
+        info!("Gravity Scale: {}", gravity_scale.0);
     }
 }
 

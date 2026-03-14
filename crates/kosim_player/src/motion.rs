@@ -1,9 +1,31 @@
-use avian3d::prelude::{ConstantForce, Forces, LinearVelocity, RayHits, RigidBodyForces, forces::ForcesItem};
-use bevy::{ecs::{component::Component, entity::Entity, query::With, system::{Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, math::{EulerRot, Quat, Vec3}, time::Time, transform::components::Transform};
+use avian3d::prelude::{
+    ConstantForce, Forces, LinearVelocity, RayHits, RigidBodyForces, forces::ForcesItem,
+};
+use bevy::{
+    ecs::{
+        component::Component,
+        entity::Entity,
+        query::With,
+        system::{Query, Res},
+    },
+    input::{ButtonInput, keyboard::KeyCode},
+    log::{info, warn},
+    math::{EulerRot, Quat, Vec3},
+    time::Time,
+    transform::components::Transform,
+};
 use kosim_input::input::Input;
-use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
+use kosim_utility::{
+    exp_decay,
+    format_value::{format_value_f32, format_value_vec3},
+    interpolated_value::InterpolatedValue,
+};
 
-use crate::{Player, body::{Body, IgnoreRayCollision, Stance, StanceType, StandingSpringForce, compute_ray_length}, config::PlayerControlConfig};
+use crate::{
+    Player,
+    body::{Body, IgnoreRayCollision, Stance, StanceType, StandingSpringForce, compute_ray_length},
+    config::PlayerControlConfig,
+};
 
 #[derive(Component)]
 pub struct Motion {
@@ -24,10 +46,10 @@ pub fn player_motion_system(
     time: Res<Time>,
 ) {
     if player_query.is_empty() || player_query.iter().len() > 1 {
-        // warn!(
-        //     "Player Motion System expected 1 player(s), recieved {}. Expect Instablity!",
-        //     player_query.iter().len()
-        // );
+        warn!(
+            "Player Motion System expected 1 player(s), recieved {}. Expect Instablity!",
+            player_query.iter().len()
+        );
         return;
     }
 
@@ -60,10 +82,11 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
-    // info!(
-    //     "Movement Speed current: {}, target: {}",
-    //     format_value_f32(motion.current_movement_speed, Some(4), true), format_value_f32(motion.target_movement_speed, Some(4), true)
-    // );
+    info!(
+        "Movement Speed current: {}, target: {}",
+        format_value_f32(motion.movement_speed.current, Some(4), true),
+        format_value_f32(motion.movement_speed.target, Some(4), true)
+    );
 
     // * UPDATE MOVEMENT_VECTOR AND LERP
 
@@ -84,10 +107,10 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
-    // info!(
-    //     "Current Movement Vector: {}",
-    //     format_value_vec3(motion.movement_vector.current, Some(4), true),
-    // );
+    info!(
+        "Current Movement Vector: {}",
+        format_value_vec3(motion.movement_vector.current, Some(4), true),
+    );
 
     // * APPLY MOVEMENT_VECTOR TO PLAYER TRANSFORM LINEAR VELOCITY
 
@@ -112,7 +135,7 @@ pub fn player_motion_system(
         let final_air_time: f32 = motion.movement_speed.current * air_time_scale;
 
         // info!(
-        //     "final movement speed: {}, dot: {}, air scale: {}",
+        //     "final air time movement speed: {}, dot: {}, air scale: {}",
         //     format_value_f32(final_air_time, Some(3), true),
         //     format_value_f32(dot, Some(3), true),
         //     format_value_f32(air_time_scale, Some(3), true)
@@ -131,21 +154,15 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
+    // We set the actual linear velocity to the current value of the interpolated linear velocity.
     linear_velocity.x = motion.linear_velocity_interp.current.x;
     linear_velocity.z = motion.linear_velocity_interp.current.z;
 
-    // info!(
-    //     "Interpolated Linear Velocity: current {}",
-    //     format_value_vec3(motion.linear_velocity_interp.current, Some(3), true)
-    // );
-    // info!(
-    //     "Interpolated Linear Velocity: target {}",
-    //     format_value_vec3(motion.linear_velocity_interp.target, Some(3), true)
-    // );
-    // info!(
-    //     "Linear Velocity: {}",
-    //     format_value_vec3(linear_velocity.0, Some(3), true),
-    // );
+    info!(
+        "Interpolated Linear Velocity:{{ current {} -> target {} }}",
+        format_value_vec3(motion.linear_velocity_interp.current, Some(3), true),
+        format_value_vec3(motion.linear_velocity_interp.target, Some(3), true)
+    );
 
     // todo: move this to a new system that handles state changes.
     // * Detected and apply MOVING flag.
@@ -171,8 +188,16 @@ pub fn player_jump_system(
     player_config: Res<PlayerControlConfig>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
-    let (entity, mut forces, mut standing_spring, mut constant_force, motion, mut stance, body, ray_hits) =
-        player_query.single_mut().expect("We do some errors");
+    let (
+        entity,
+        mut forces,
+        mut standing_spring,
+        mut constant_force,
+        motion,
+        mut stance,
+        body,
+        ray_hits,
+    ) = player_query.single_mut().expect("We do some errors");
     // * -   - JUMPING LOGIC   -
 
     if stance.current == StanceType::Standing
@@ -310,10 +335,10 @@ pub fn apply_spring_force(
     /* Now we apply our spring force vector in the direction to return the bodies distance from the ground towards RIDE_HEIGHT. */
     constant_force.0.y = -spring_force;
 
-    // info!(
-    //     "Applying Spring Force: {} (ray_length: {}, ride_height: {})",
-    //     format_value_f32(spring_force, Some(3), true),
-    //     format_value_f32(ray_length, Some(3), true),
-    //     format_value_f32(ride_height, Some(3), true)
-    // );
+    info!(
+        "Applying Spring Force: {} (ray_length: {}, ride_height: {})",
+        format_value_f32(spring_force, Some(3), true),
+        format_value_f32(ray_length, Some(3), true),
+        format_value_f32(ride_height, Some(3), true)
+    );
 }
