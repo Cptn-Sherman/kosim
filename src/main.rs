@@ -5,42 +5,22 @@ use avian3d::{
     prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody},
 };
 use bevy::{
-    asset::RenderAssetUsages,
-    color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
-    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
-    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk},
-    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
-    prelude::*,
-    render::render_asset::RenderAssetBytesPerFrame,
+    asset::RenderAssetUsages, color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200}, dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig}, light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk}, mesh::{Indices, PrimitiveTopology, VertexAttributeValues}, prelude::*, render::render_asset::RenderAssetBytesPerFrame
 };
+use bevy_infinite_grid::{InfiniteGridBundle, InfiniteGridPlugin};
 use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween};
 use bevy_turborand::prelude::RngPlugin;
-use kosim_camera::{
-    CameraConfig, ToggleCameraEvent, create_camera,
-    freecam::{create_free_camera, move_free_camera},
-    load_toggle_camera_soundfxs, play_toggle_camera_soundfx, swap_camera_target, take_screenshot,
-};
+use kosim_camera::KosimCameraPlugin;
 use kosim_input::{
-    InputConfig,
-    binding::Bindings,
-    cursor::{detect_toggle_cursor_system, initial_cursor_center, initial_grab_cursor},
-    input::{Input, update_input_resource},
+    InputConfig, KosimInputPlugin, binding::Bindings, input::Input
 };
 use kosim_player::PlayerPlugin;
-
-#[derive(Component)]
-struct Sun;
 
 fn main() {
     App::new()
         .init_resource::<Bindings>()
         .insert_resource(RenderAssetBytesPerFrame::new(2_000_000_000))
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
-        .insert_resource(CameraConfig {
-            hdr: true,
-            fov: 75.0,
-            screenshot_format: "png".into(),
-        })
         .insert_resource(InputConfig {
             sensitivity: 1.0,
             gamepad_look_sensitivity: 1.0,
@@ -49,56 +29,50 @@ fn main() {
         .insert_resource(Input::default())
         .add_plugins((
             DefaultPlugins,
+            KosimInputPlugin,
+            KosimCameraPlugin,
             RngPlugin::new().with_rng_seed(0),
             PhysicsDebugPlugin::default(),
             PhysicsPlugins::default(),
-            // DebugInterfacePlugin,
             PlayerPlugin,
             AudioPlugin,
             FpsOverlayPlugin {
                 config: FpsOverlayConfig {
-                    enabled: false, // !Bug: will be fixed in 0.18 release.
+                    enabled: true,
+                    refresh_interval: Duration::from_millis(100),
+                    text_config: TextFont {
+                        font_size: 14.0,
+                        ..default()
+                    },
                     frame_time_graph_config: FrameTimeGraphConfig {
                         enabled: true,
-                        target_fps: 60.0,
+                        min_fps: 30.0,
+                        target_fps: 240.0,
                         ..default()
                     },
                     ..default()
                 },
             },
+            InfiniteGridPlugin,
             // bevy_panic_handler::PanicHandler::new().build(),
-            // TemporalAntiAliasPlugin,
-            // AtmospherePlugin,
             // BlockoutPlugin,
-            // InfiniteGridPlugin,
             // SunMovePlugin,
             // RandomStarsPlugin,
         ))
-        .add_systems(PreStartup, (create_camera, create_free_camera))
         .add_systems(
             Startup,
             (
                 setup,
                 start_background_audio,
-                load_toggle_camera_soundfxs,
-                initial_grab_cursor,
-                initial_cursor_center, // ! Bug: "cursor position can be set only for locked cursor" however, window is locked.
             )
                 .chain(),
         )
         .add_systems(
             Update,
             (
-                update_input_resource,
-                detect_toggle_cursor_system,
-                swap_camera_target,
-                move_free_camera,
-                play_toggle_camera_soundfx,
-                take_screenshot,
                 close_on_key,
             ),
         )
-        .add_message::<ToggleCameraEvent>()
         .run();
 }
 
@@ -122,8 +96,7 @@ fn setup(
     //mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, BlockoutMaterialExt>>>,
 ) {
     // info!("Percentage Test: {}", format_percentage::<f32>(120.0f32));
-
-    // commands.spawn(InfiniteGridBundle::default());
+    commands.spawn(InfiniteGridBundle::default());
 
     let _cascade_shadow_config = CascadeShadowConfigBuilder {
         first_cascade_far_bound: 0.3,

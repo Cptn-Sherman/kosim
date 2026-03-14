@@ -1,5 +1,4 @@
-use bevy_ecs::{entity::Entity, query::With, system::{Query, Res}};
-use bevy_input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode};
+use bevy::{ecs::{entity::Entity, query::With, system::{Query, Res}}, input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode}};
 use kosim_input::binding::Bindings;
 
 use crate::{Player, body::{Stance, StanceType}, motion::Motion};
@@ -15,11 +14,13 @@ pub fn toggle_sprinting(
         if stance.current == StanceType::Airborne {
             return;
         }
+        
+        motion.sprinting = keys.pressed(bindings.action_sprint.key);
 
         if let Ok((_entity, gamepad)) = gamepad_query.single() {
-            motion.sprinting = gamepad.pressed(bindings.action_sprint.button);
-        } else {
-            motion.sprinting = keys.pressed(bindings.action_sprint.key);
+            if !motion.sprinting {
+                motion.sprinting = gamepad.pressed(bindings.action_sprint.button);
+            }
         }
     }
 }

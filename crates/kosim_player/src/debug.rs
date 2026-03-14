@@ -1,20 +1,5 @@
 use avian3d::prelude::LinearVelocity;
-use bevy_asset::{AssetServer, Handle};
-use bevy_camera::Camera3d;
-use bevy_color::Color;
-use bevy_ecs::{
-    component::Component,
-    query::{With, Without},
-    system::{Commands, Query, Res},
-};
-use bevy_math::{EulerRot, Quat};
-use bevy_text::{Font, TextColor, TextFont, TextSpan};
-use bevy_transform::components::Transform;
-use bevy_ui::{
-    AlignItems, BackgroundColor, BorderColor, Display, FlexDirection, JustifyContent, Node,
-    PositionType, UiRect, Val, widget::Text,
-};
-use bevy_utils::default;
+use bevy::{asset::{AssetServer, Handle}, camera::Camera3d, color::Color, ecs::{component::Component, query::{With, Without}, system::{Commands, Query, Res}}, math::{EulerRot, Quat}, text::{Font, TextColor, TextFont, TextSpan}, transform::components::Transform, ui::{AlignItems, BackgroundColor, BorderColor, Display, FlexDirection, JustifyContent, Node, PositionType, UiRect, Val, widget::Text}, utils::default};
 use kosim_interface::{BORDER_COLOR, DEFAULT_DEBUG_FONT_PATH};
 use kosim_utility::format_value::{format_value_f32, format_value_quat, format_value_vec3};
 

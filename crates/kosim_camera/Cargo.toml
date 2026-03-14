@@ -6,22 +6,13 @@ license = "Apache-2.0"
 
 [dependencies]
 avian3d = { version = "0.4" }
-bevy_asset = "0.17.3"
-bevy_camera = "0.17.3"
-bevy_core_pipeline = "0.17.3"
-bevy_ecs = "0.17.3"
-bevy_input = "0.17.3"
-bevy_kira_audio = "0.24.0"
-bevy_light = "0.17.3"
-bevy_math = "0.17.3"
-bevy_pbr = "0.17.3"
-bevy_reflect = "0.17.3"
-bevy_render = "0.17.3"
-bevy_time = "0.17.3"
-bevy_transform = "0.17.3"
-bevy_utils = "0.17.3"
-bevy_window = "0.17.3"
+bevy = { version = "0.17.3", features = [
+    "dynamic_linking",
+    "file_watcher",
+    "embedded_watcher",
+    "bevy_dev_tools",
+] }
 chrono = "0.4.42"
+bevy_kira_audio = { version = "0.24.0", features = ["wav"] }
 kosim_input = { version = "0.1.0", path = "../kosim_input" }
-kosim_player = { version = "0.1.0", path = "../kosim_player" }
 kosim_utility = { version = "0.1.0", path = "../kosim_utility" }

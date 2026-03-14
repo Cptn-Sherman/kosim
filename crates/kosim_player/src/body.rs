@@ -1,7 +1,6 @@
-use bevy_ecs::{bundle::Bundle, component::Component, entity::Entity, message::MessageWriter, query::With, system::{Query, Res}};
 use avian3d::prelude::*;
-use bevy_math::Vec3;
-use bevy_time::Time;
+
+use bevy::{ecs::{bundle::Bundle, component::Component, entity::Entity, message::MessageWriter, query::With, system::{Query, Res}}, math::Vec3, time::Time};
 use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
 
 use crate::{Player, actions::step::{DEFAULT_STEP_VOLUME, FootstepDirection, FootstepEvent}, config::PlayerControlConfig, motion::apply_spring_force};

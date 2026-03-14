@@ -879,6 +879,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_infinite_grid"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5517bfe751e4d2408fda16d61e5f0a0cf09fc3a7c13dca4a22812bbfce31d0f"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "bevy_input"
 version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3177,6 +3186,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "bevy_dylib",
+ "bevy_infinite_grid",
  "bevy_kira_audio",
  "bevy_turborand",
  "kosim_camera",
@@ -3190,24 +3200,10 @@ name = "kosim_camera"
 version = "0.1.0"
 dependencies = [
  "avian3d",
- "bevy_asset",
- "bevy_camera",
- "bevy_core_pipeline",
- "bevy_ecs",
- "bevy_input",
+ "bevy",
  "bevy_kira_audio",
- "bevy_light",
- "bevy_math",
- "bevy_pbr",
- "bevy_reflect",
- "bevy_render",
- "bevy_time",
- "bevy_transform",
- "bevy_utils",
- "bevy_window",
  "chrono",
  "kosim_input",
- "kosim_player",
  "kosim_utility",
 ]
 
@@ -3215,10 +3211,7 @@ dependencies = [
 name = "kosim_input"
 version = "0.1.0"
 dependencies = [
- "bevy_ecs",
- "bevy_input",
- "bevy_math",
- "bevy_window",
+ "bevy",
  "kosim_utility",
 ]
 
@@ -3226,11 +3219,7 @@ dependencies = [
 name = "kosim_interface"
 version = "0.1.0"
 dependencies = [
- "bevy_asset",
- "bevy_color",
- "bevy_ecs",
- "bevy_text",
- "bevy_ui",
+ "bevy",
 ]
 
 [[package]]
@@ -3238,22 +3227,10 @@ name = "kosim_player"
 version = "0.1.0"
 dependencies = [
  "avian3d",
- "bevy_app",
- "bevy_asset",
- "bevy_camera",
- "bevy_color",
- "bevy_ecs",
- "bevy_input",
+ "bevy",
  "bevy_kira_audio",
- "bevy_math",
- "bevy_mesh",
- "bevy_pbr",
- "bevy_text",
- "bevy_time",
- "bevy_transform",
  "bevy_turborand",
- "bevy_ui",
- "bevy_utils",
+ "kosim_camera",
  "kosim_input",
  "kosim_interface",
  "kosim_utility",
@@ -3262,12 +3239,15 @@ dependencies = [
 [[package]]
 name = "kosim_terrain"
 version = "0.1.0"
+dependencies = [
+ "bevy",
+]
 
 [[package]]
 name = "kosim_utility"
 version = "0.1.0"
 dependencies = [
- "bevy_math",
+ "bevy",
 ]
 
 [[package]]

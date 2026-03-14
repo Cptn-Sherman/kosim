@@ -1,6 +1,6 @@
 use std::fmt::{Display, Write};
 
-use bevy_math::{EulerRot, Quat, Vec2, Vec3};
+use bevy::math::{EulerRot, Quat, Vec2, Vec3};
 
 pub const NO_PERCENTAGE: &str = "---.-%";
 

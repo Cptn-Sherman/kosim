@@ -1,4 +1,5 @@
-use bevy_ecs::resource::Resource;
+use bevy::ecs::resource::Resource;
+
 
 #[derive(Resource)]
 pub struct PlayerControlConfig {

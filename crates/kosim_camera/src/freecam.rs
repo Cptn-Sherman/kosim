@@ -1,9 +1,4 @@
-use bevy_camera::Camera3d;
-use bevy_ecs::{component::Component, query::{With, Without}, system::{Commands, Query, Res}};
-use bevy_input::{ButtonInput, keyboard::KeyCode};
-use bevy_math::Vec3;
-use bevy_time::Time;
-use bevy_transform::components::Transform;
+use bevy::{camera::Camera3d, ecs::{component::Component, query::{With, Without}, system::{Commands, Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, log::warn, math::Vec3, time::Time, transform::components::Transform};
 use kosim_input::binding::Bindings;
 
 #[derive(Component)]
@@ -28,11 +23,11 @@ pub fn move_free_camera(
         || free_entity_query.is_empty()
         || free_entity_query.iter().len() > 1
     {
-        // warn!(
-        //     "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
-        //     camera_query.iter().len(),
-        //     free_entity_query.iter().len()
-        // );
+        warn!(
+            "Free Camera Motion System did not recieve expected 1 camera(s) recieved {}, and 1 player(s) recieved {}. Expect Instablity!",
+            camera_query.iter().len(),
+            free_entity_query.iter().len()
+        );
         return;
     }
 

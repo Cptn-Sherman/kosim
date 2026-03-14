@@ -1,7 +1,5 @@
 use avian3d::prelude::Collider;
-use bevy_ecs::{entity::Entity, query::With, system::{Query, Res, ResMut}};
-use bevy_input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode};
-use bevy_math::Vec3;
+use bevy::{ecs::{entity::Entity, query::With, system::{Query, Res, ResMut}}, input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode}, math::Vec3};
 use kosim_input::binding::Bindings;
 
 use crate::{Player, PlayerControlConfig, body::{Body, PlayerColliderFlag, Stance}};

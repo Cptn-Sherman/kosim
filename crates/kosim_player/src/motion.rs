@@ -1,9 +1,5 @@
 use avian3d::prelude::{ConstantForce, Forces, LinearVelocity, RayHits, RigidBodyForces, forces::ForcesItem};
-use bevy_ecs::{component::Component, entity::Entity, query::With, system::{Query, Res}};
-use bevy_input::{ButtonInput, keyboard::KeyCode};
-use bevy_math::{EulerRot, Quat, Vec3};
-use bevy_time::Time;
-use bevy_transform::components::Transform;
+use bevy::{ecs::{component::Component, entity::Entity, query::With, system::{Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, math::{EulerRot, Quat, Vec3}, time::Time, transform::components::Transform};
 use kosim_input::input::Input;
 use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
 

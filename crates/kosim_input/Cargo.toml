@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy_ecs = "0.17.3"
-bevy_input = "0.17.3"
-bevy_math = "0.17.3"
-bevy_window = "0.17.3"
+bevy = { version = "0.17.3", features = [
+    "dynamic_linking",
+    "file_watcher",
+    "embedded_watcher",
+    "bevy_dev_tools",
+] }
 kosim_utility = { version = "0.1.0", path = "../kosim_utility" }

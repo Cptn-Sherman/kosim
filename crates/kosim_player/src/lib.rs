@@ -1,26 +1,61 @@
 use avian3d::prelude::*;
-use bevy_app::{App, FixedUpdate, Plugin, Startup, Update};
-use bevy_asset::Assets;
-use bevy_camera::{Camera, Camera3d};
-use bevy_color::Color;
-use bevy_ecs::{bundle::Bundle, component::Component, entity::Entity, hierarchy::ChildOf, query::{With, Without}, schedule::IntoScheduleConfigs, system::{Commands, Query, Res, ResMut}};
-use bevy_math::{Dir3, Vec3, primitives::Sphere};
-use bevy_mesh::{Mesh, Mesh3d, Meshable};
-use bevy_pbr::{MeshMaterial3d, StandardMaterial};
-use bevy_transform::components::Transform;
-use bevy_utils::default;
+use bevy::{
+    app::{App, FixedUpdate, Plugin, Startup, Update},
+    asset::Assets,
+    camera::{Camera, Camera3d},
+    color::Color,
+    ecs::{
+        bundle::Bundle,
+        component::Component,
+        entity::Entity,
+        hierarchy::ChildOf,
+        query::{With, Without},
+        schedule::IntoScheduleConfigs,
+        system::{Commands, Query, Res, ResMut},
+    },
+    log::{info, warn},
+    math::{Dir3, Vec3, primitives::Sphere},
+    mesh::{Mesh, Mesh3d, Meshable},
+    pbr::{MeshMaterial3d, StandardMaterial},
+    time::Fixed,
+    transform::components::Transform,
+    utils::default,
+};
+use kosim_camera::{GameCamera, first_person_camera::smooth_camera};
 use kosim_utility::interpolated_value::InterpolatedValue;
 
 use crate::{
-    actions::{crouch::toggle_crouching, sprint::toggle_sprinting, step::{ACTION_STEP_DELTA_DEFAULT, ActionStep, FootstepDirection, FootstepEvent, load_footstep_sfx, play_footstep_sfx, tick_footstep}}, body::{Body, IgnoreRayCollision, PlayerColliderBundle, PlayerColliderFlag, Stance, StanceType, StandingSpringForce, apply_standing_spring_force, lock_angular_velocity, update_player_stance}, config::PlayerControlConfig, debug::{create_player_debug, update_debug_is_moving, update_debug_is_sprinting, update_debug_linear_velocity, update_debug_movement_speed_current, update_debug_movement_speed_target, update_debug_movement_vector_current, update_debug_movement_vector_decay, update_debug_movement_vector_target, update_debug_position, update_debug_rotation}, focus::{Focus, camera_look_system}, motion::{Motion, player_jump_system, player_motion_system, player_rotation_system}
+    actions::{
+        crouch::toggle_crouching,
+        sprint::toggle_sprinting,
+        step::{
+            ACTION_STEP_DELTA_DEFAULT, ActionStep, FootstepDirection, FootstepEvent,
+            load_footstep_sfx, play_footstep_sfx, tick_footstep,
+        },
+    },
+    body::{
+        Body, IgnoreRayCollision, PlayerColliderBundle, PlayerColliderFlag, Stance, StanceType,
+        StandingSpringForce, apply_standing_spring_force, lock_angular_velocity,
+        update_player_stance,
+    },
+    config::PlayerControlConfig,
+    debug::{
+        create_player_debug, update_debug_is_moving, update_debug_is_sprinting,
+        update_debug_linear_velocity, update_debug_movement_speed_current,
+        update_debug_movement_speed_target, update_debug_movement_vector_current,
+        update_debug_movement_vector_decay, update_debug_movement_vector_target,
+        update_debug_position, update_debug_rotation,
+    },
+    focus::{Focus, camera_look_system},
+    motion::{Motion, player_jump_system, player_motion_system, player_rotation_system},
 };
 
 pub mod actions;
 pub mod body;
+pub mod config;
 pub mod debug;
 pub mod focus;
 pub mod motion;
-pub mod config;
 
 pub struct PlayerPlugin;
 
@@ -40,13 +75,13 @@ impl Plugin for PlayerPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                apply_standing_spring_force,
-                update_player_stance,
+                smooth_camera,
                 camera_look_system,
                 player_rotation_system,
+                apply_standing_spring_force,
                 player_motion_system,
                 player_jump_system,
-                // smooth_camera
+                update_player_stance,
                 toggle_crouching,
                 toggle_sprinting,
                 lock_angular_velocity,
@@ -58,6 +93,7 @@ impl Plugin for PlayerPlugin {
         app.add_systems(
             Update,
             (
+                // BUG: having this in Update causes physics bugs but its choppy in FixedUpdate.
                 update_debug_movement_vector_decay,
                 update_debug_movement_vector_current,
                 update_debug_movement_vector_target,
@@ -181,9 +217,6 @@ pub fn spawn_player(
     // info!("Spawned Player Actor");
 }
 
-#[derive(Component)]
-pub struct GameCamera;
-
 fn attached_camera_system(
     mut commands: Commands,
     mut player_query: Query<(Entity, &mut Transform), (With<Player>, Without<Camera>)>,
@@ -197,7 +230,11 @@ fn attached_camera_system(
         || player_query.is_empty()
         || player_query.iter().len() > 1
     {
-        // warn!("The Camera attach system did not recieve 1 player and 1 camera. Found {} cameras, and {} players", camera_query.iter().len(), player_query.iter().len());
+        warn!(
+            "The Camera attach system did not recieve 1 player and 1 camera. Found {} cameras, and {} players",
+            camera_query.iter().len(),
+            player_query.iter().len()
+        );
     }
 
     for (player_entity, _player_transform) in &mut player_query {
@@ -207,11 +244,10 @@ fn attached_camera_system(
                 commands
                     .entity(player_entity)
                     .add_children(&[camera_entity]);
-                //info!("Attached Camera to player character as child");
+                info!("Attached Camera to player character as child");
             } else {
-                //info!("Camera parent already exists, will not set player as parent!");
+                info!("Camera parent already exists, will not set player as parent!");
             }
         }
     }
 }
-

@@ -1,24 +1,20 @@
-use bevy_camera::Camera3d;
-use bevy_ecs::{component::Component, query::{With, Without}, system::{Query, Res}};
-use bevy_math::{EulerRot, Quat, Vec3};
-use bevy_time::Time;
-use bevy_transform::components::Transform;
+use bevy::{camera::Camera3d, ecs::{component::Component, query::With, system::{Query, Res}}, math::{EulerRot, Quat, Vec3}, time::Time, transform::components::Transform};
 use kosim_input::input::Input;
-use kosim_player::Player;
 use kosim_utility::{exp_decay, interpolated_value::InterpolatedValue};
+
+pub const ROTATION_AMOUNT: f32 = 4.0;
+pub const LEAN_LOCKOUT_TIME: f32 = 0.15;
 
 #[derive(Component)]
 pub struct SmoothedCamera {
     pub lean: InterpolatedValue<Vec3>,
     pub lock_lean: f32,
 }
-pub const ROTATION_AMOUNT: f32 = 4.0;
-pub const LEAN_LOCKOUT_TIME: f32 = 0.15;
 
 pub fn smooth_camera(
     mut camera_query: Query<
         (&mut Transform, &mut SmoothedCamera),
-        (With<Camera3d>, Without<Player>),
+        With<Camera3d>,
     >,
     input: Res<Input>,
     time: Res<Time>,

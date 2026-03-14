@@ -1,14 +1,7 @@
-use bevy_asset::{AssetServer, Handle};
-use bevy_ecs::{
-    component::Component,
-    event::Event,
-    message::{Message, MessageReader, MessageWriter},
-    query::With,
-    resource::Resource,
-    system::{Commands, Query, Res, ResMut},
-};
+
+
+use bevy::{asset::{AssetServer, Handle}, ecs::{component::Component, event::Event, message::{Message, MessageReader, MessageWriter}, query::With, resource::Resource, system::{Commands, Query, Res, ResMut}}, time::Time};
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
-use bevy_time::Time;
 use bevy_turborand::{DelegatedRng, GlobalRng};
 use kosim_utility::ternary;
 

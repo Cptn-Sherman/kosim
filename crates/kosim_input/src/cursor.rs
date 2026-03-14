@@ -1,14 +1,7 @@
-use bevy_window::{Window, CursorGrabMode, PrimaryWindow};
-use bevy_math::{Vec2};
-use bevy_ecs::system::Single;
-use bevy_ecs::prelude::Res;
-use bevy_input::keyboard::KeyCode;
 use crate::binding::Bindings;
+use bevy::{ecs::{query::With, system::{Query, Res, Single}}, input::{ButtonInput, keyboard::KeyCode}, log::{info, warn}, math::Vec2, window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window}};
 use kosim_utility::ternary;
-use bevy_input::ButtonInput;
-use bevy_ecs::system::Query;
-use bevy_ecs::query::With;
-use bevy_window::CursorOptions;
+
 
 // * --- Cursor Grab ---
 // Start up system used to capture the mouse.
@@ -22,7 +15,7 @@ pub fn initial_cursor_center(mut primary_window: Query<&mut Window, With<Primary
     if let Ok(mut window) = primary_window.single_mut() {
         center_cursor(&mut window);
     } else {
-        // FIXME: warn!("Primary window not found for `initial_cursor_center`!");
+        warn!("Primary window not found for `initial_cursor_center`!");
     }
 }
 
@@ -44,11 +37,10 @@ pub fn detect_toggle_cursor_system(
 fn set_cursor_grab_mode(mut cursor_options: Single<&mut CursorOptions>, grab_mode: CursorGrabMode) {
     cursor_options.grab_mode = grab_mode;
     cursor_options.visible = ternary!(grab_mode == CursorGrabMode::None, true, false);
-    //  FIXME: 
-    // info!(
-    //     "Setting window grab mode: {}",
-    //     grab_mode_stringified(&grab_mode)
-    // );
+    info!(
+        "CursorGrabMode: {{ {} }}",
+        grab_mode_stringified(&grab_mode)
+    );
 }
 
 // Sets the cursor to the center of the window.

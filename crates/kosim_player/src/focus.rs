@@ -1,16 +1,6 @@
-use bevy_camera::Camera3d;
-use bevy_ecs::{
-    component::Component,
-    query::{With, Without},
-    system::{Query, Res},
-};
-use bevy_math::{EulerRot, Quat};
-use bevy_time::Time;
-use bevy_transform::components::Transform;
+use bevy::{camera::Camera3d, ecs::{component::Component, query::{With, Without}, system::{Query, Res}}, input::{ButtonInput, keyboard::KeyCode}, math::{EulerRot, Quat}, time::Time, transform::components::Transform};
 use kosim_input::{binding::Bindings, input::Input};
 use kosim_utility::exp_decay;
-use bevy_input::keyboard::KeyCode;
-use bevy_input::ButtonInput;
 use crate::Player;
 
 #[derive(Component)]

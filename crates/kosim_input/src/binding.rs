@@ -1,5 +1,4 @@
-use bevy_input::{gamepad::GamepadButton, keyboard::KeyCode};
-use bevy_ecs::resource::Resource;
+use bevy::{ecs::resource::Resource, input::{gamepad::GamepadButton, keyboard::KeyCode}};
 
 pub enum Action {
     Jump,

@@ -1,8 +1,4 @@
-use bevy_asset::Handle;
-use bevy_color::Color;
-use bevy_ecs::bundle::Bundle;
-use bevy_text::{Font, FontSmoothing, LineHeight, TextColor, TextFont};
-use bevy_ui::widget::Text;
+use bevy::{asset::Handle, color::Color, ecs::bundle::Bundle, text::{Font, FontSmoothing, LineHeight, TextColor, TextFont}, ui::widget::Text};
 
 
 pub const DEFAULT_FONT_PATH: &str = "fonts/AshlanderPixel_fixed.ttf";

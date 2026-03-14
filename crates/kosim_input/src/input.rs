@@ -1,17 +1,16 @@
-use bevy_ecs::{
-    entity::Entity,
-    query::With,
-    resource::Resource,
-    system::{Query, Res, ResMut},
-};
-use bevy_input::{
-    ButtonInput,
-    gamepad::{Gamepad, GamepadAxis},
-    keyboard::KeyCode,
-    mouse::AccumulatedMouseMotion,
-};
-use bevy_math::{Vec2, Vec3};
-use bevy_window::{PrimaryWindow, Window};
+
+use bevy::ecs::entity::Entity;
+use bevy::ecs::query::With;
+use bevy::ecs::resource::Resource;
+use bevy::ecs::system::{Query, Res, ResMut};
+use bevy::input::ButtonInput;
+use bevy::input::gamepad::{Gamepad, GamepadAxis};
+use bevy::input::keyboard::KeyCode;
+use bevy::input::mouse::AccumulatedMouseMotion;
+use bevy::log::trace;
+use bevy::math::{Vec2, Vec3};
+use bevy::window::{PrimaryWindow, Window};
+use kosim_utility::format_value::{format_value_vec2, format_value_vec3};
 
 use crate::binding::Bindings;
 use crate::InputConfig;
@@ -90,9 +89,9 @@ pub fn update_input_resource(
         }
     }
 
-    // info!(
+    // trace!(
     //     "Movement: {}, Direction: {}",
-    //     format_value_vec3(input.movement, Some(2), true),
-    //     format_value_vec2(input.direction, Some(2), true)
+    //     format_value_vec3(input.movement_raw, Some(2), true),
+    //     format_value_vec2(input.focus_delta, Some(2), true)
     // );
 }
