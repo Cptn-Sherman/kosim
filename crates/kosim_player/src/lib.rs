@@ -74,7 +74,6 @@ impl Plugin for PlayerPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                smooth_camera,
                 camera_look_system,
                 player_rotation_system,
                 player_motion_system,

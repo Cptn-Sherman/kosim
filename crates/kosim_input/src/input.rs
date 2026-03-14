@@ -7,7 +7,7 @@ use bevy::input::ButtonInput;
 use bevy::input::gamepad::{Gamepad, GamepadAxis};
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::AccumulatedMouseMotion;
-use bevy::log::{info};
+use bevy::log::trace;
 use bevy::math::{Vec2, Vec3};
 use bevy::window::{PrimaryWindow, Window};
 use kosim_utility::format_value::{format_value_vec2, format_value_vec3};
@@ -90,7 +90,7 @@ pub fn update_input_resource(
         }
     }
 
-    info!(
+    trace!(
         "Movement: {}, Direction: {}",
         format_value_vec3(input.movement_raw, Some(2), true),
         format_value_vec2(input.focus_delta, Some(2), true)

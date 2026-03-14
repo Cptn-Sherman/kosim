@@ -21,7 +21,7 @@ pub fn create_player_debug(mut commands: Commands, asset_server: Res<AssetServer
             display: Display::Flex,
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::FlexStart,
-            align_items: AlignItems::FlexStart,
+            align_items: AlignItems::FlexEnd,
             position_type: PositionType::Absolute,
             ..default()
         })

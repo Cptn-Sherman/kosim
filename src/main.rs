@@ -5,15 +5,19 @@ use avian3d::{
     prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody},
 };
 use bevy::{
-    asset::RenderAssetUsages, color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200}, dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig}, light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk}, mesh::{Indices, PrimitiveTopology, VertexAttributeValues}, prelude::*, render::render_asset::RenderAssetBytesPerFrame
+    asset::RenderAssetUsages,
+    color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
+    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk},
+    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
+    prelude::*,
+    render::render_asset::RenderAssetBytesPerFrame,
 };
 use bevy_infinite_grid::{InfiniteGridBundle, InfiniteGridPlugin};
 use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween};
 use bevy_turborand::prelude::RngPlugin;
 use kosim_camera::KosimCameraPlugin;
-use kosim_input::{
-    InputConfig, KosimInputPlugin, binding::Bindings, input::Input
-};
+use kosim_input::{InputConfig, KosimInputPlugin, binding::Bindings, input::Input};
 use kosim_player::PlayerPlugin;
 
 fn main() {
@@ -59,20 +63,8 @@ fn main() {
             // SunMovePlugin,
             // RandomStarsPlugin,
         ))
-        .add_systems(
-            Startup,
-            (
-                setup,
-                start_background_audio,
-            )
-                .chain(),
-        )
-        .add_systems(
-            Update,
-            (
-                close_on_key,
-            ),
-        )
+        .add_systems(Startup, (setup, start_background_audio).chain())
+        .add_systems(Update, (close_on_key,))
         .run();
 }
 

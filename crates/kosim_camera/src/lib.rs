@@ -23,7 +23,7 @@ use kosim_input::binding::Bindings;
 use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
-use crate::first_person_camera::{LeanCameraSystem, smooth_camera};
+use crate::first_person_camera::LeanCameraSystem;
 use crate::freecam::{create_free_camera, move_free_camera};
 
 pub mod first_person_camera;

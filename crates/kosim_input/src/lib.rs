@@ -1,7 +1,7 @@
 use bevy::{
     app::{
         App, FixedPreUpdate, FixedUpdate, Plugin, PreStartup, PreUpdate, RunFixedMainLoop,
-        RunFixedMainLoopSystems, Startup, Update,
+        RunFixedMainLoopSystems, Startup,
     },
     ecs::{
         resource::Resource,
@@ -57,7 +57,7 @@ impl Plugin for KosimInputPlugin {
             .add_systems(FixedUpdate, cursor::detect_toggle_cursor_system);
     }
 }
-
+// This was pulled from the bevy fixed timestep example.
 /// A simple resource that tells us whether the fixed timestep ran this frame.
 #[derive(Resource, Debug, Deref, DerefMut, Default)]
 pub struct DidFixedTimestepRunThisFrame(bool);
