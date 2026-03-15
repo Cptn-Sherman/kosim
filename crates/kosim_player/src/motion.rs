@@ -9,7 +9,7 @@ use bevy::{
         system::{Query, Res},
     },
     input::{ButtonInput, keyboard::KeyCode},
-    log::{info, warn},
+    log::{info, trace, warn},
     math::{EulerRot, Quat, Vec3},
     time::Time,
     transform::components::Transform,
@@ -82,7 +82,7 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
-    info!(
+    trace!(
         "Movement Speed current: {}, target: {}",
         format_value_f32(motion.movement_speed.current, Some(4), true),
         format_value_f32(motion.movement_speed.target, Some(4), true)
@@ -107,7 +107,7 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
-    info!(
+    trace!(
         "Current Movement Vector: {}",
         format_value_vec3(motion.movement_vector.current, Some(4), true),
     );
@@ -158,8 +158,8 @@ pub fn player_motion_system(
     linear_velocity.x = motion.linear_velocity_interp.current.x;
     linear_velocity.z = motion.linear_velocity_interp.current.z;
 
-    info!(
-        "Interpolated Linear Velocity:{{ current {} -> target {} }}",
+    trace!(
+        "Interpolated Linear Velocity: {{ current {} -> target {} }}",
         format_value_vec3(motion.linear_velocity_interp.current, Some(3), true),
         format_value_vec3(motion.linear_velocity_interp.target, Some(3), true)
     );
@@ -258,9 +258,9 @@ pub fn apply_jump_force(
         compute_clamped_jump_force_factor(&body, &standing_spring, ray_length);
 
     // todo: make this value changable.
+    
     let dynamic_jump_strength: f32 = half_jump_strength + (half_jump_strength * clamped_jump_force);
 
-    // todo: right now we are applying this jump force directly up, this needs to consider the original movement velocities.
     // maybe instead of half the strength getting added to the up we added it directionally only so you always jump x height but can
     // use more of the timing to aid in forward momentum.
 
@@ -273,18 +273,18 @@ pub fn apply_jump_force(
 
     let impulse_vec: Vec3 = jump_direction * dynamic_jump_strength;
 
-    // info!(
-    //     "impulse_vec: {}",
-    //     format_value_vec3(impulse_vec, Some(3), true)
-    // );
+    trace!(
+        "impulse_vec: {}",
+        format_value_vec3(impulse_vec, Some(3), true)
+    );
 
     // apply the jump force.
     forces.apply_linear_impulse(impulse_vec.into());
 
-    // info!(
-    //     "Jumped with {}/{} due to distance to ground, /njump_factor {}, of ray length: {}",
-    //     dynamic_jump_strength, player_config.jump_strength, clamped_jump_force, ray_length
-    // );
+    info!(
+        "Jumped with {}/{} due to distance to ground, /njump_factor {}, of ray length: {}",
+        dynamic_jump_strength, player_config.jump_strength, clamped_jump_force, ray_length
+    );
 }
 
 fn compute_clamped_jump_force_factor(
@@ -335,7 +335,7 @@ pub fn apply_spring_force(
     /* Now we apply our spring force vector in the direction to return the bodies distance from the ground towards RIDE_HEIGHT. */
     constant_force.0.y = -spring_force;
 
-    info!(
+    trace!(
         "Applying Spring Force: {} (ray_length: {}, ride_height: {})",
         format_value_f32(spring_force, Some(3), true),
         format_value_f32(ray_length, Some(3), true),

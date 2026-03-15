@@ -1,9 +1,30 @@
 use avian3d::prelude::*;
 
-use bevy::{ecs::{bundle::Bundle, component::Component, entity::Entity, message::MessageWriter, query::With, system::{Query, Res}}, log::info, math::Vec3, time::Time};
-use kosim_utility::{exp_decay, format_value::format_value_vec3, interpolated_value::InterpolatedValue};
+use bevy::{
+    ecs::{
+        bundle::Bundle,
+        component::Component,
+        entity::Entity,
+        message::MessageWriter,
+        query::With,
+        system::{Query, Res},
+    },
+    log::{info, trace, warn},
+    math::Vec3,
+    time::Time,
+};
+use kosim_utility::{
+    exp_decay,
+    format_value::{format_value_f32, format_value_vec3},
+    interpolated_value::InterpolatedValue,
+};
 
-use crate::{Player, actions::step::{DEFAULT_STEP_VOLUME, FootstepDirection, FootstepEvent}, config::PlayerControlConfig, motion::apply_spring_force};
+use crate::{
+    Player,
+    actions::step::{DEFAULT_STEP_VOLUME, FootstepDirection, FootstepEvent},
+    config::PlayerControlConfig,
+    motion::apply_spring_force,
+};
 
 #[derive(Component)]
 pub struct PlayerColliderFlag;
@@ -59,13 +80,13 @@ pub fn update_player_stance(
     time: Res<Time>,
 ) {
     if query.is_empty() || query.iter().len() > 1 {
-        // warn!(
-        //     "Update Player Stance System found {} players, expected 1.",
-        //     query.iter().len()
-        // );
+        warn!(
+            "Update Player Stance System found {} players, expected 1.",
+            query.iter().len()
+        );
     }
 
-    for (entity, standing_spring, mut stance, ray_hits) in &mut query {
+    for (entity, standing_spring_height, mut stance, ray_hits) in &mut query {
         // Compute the next stance for the player.
         let previous_stance: StanceType = stance.current.clone();
         let mut next_stance: StanceType = stance.current.clone();
@@ -83,12 +104,13 @@ pub fn update_player_stance(
             //     format_value_f32(ray_length, Some(2), false)
             // );
 
-            if ray_length > standing_spring.length.current + config.ray_length_offset {
+            if ray_length > standing_spring_height.length.current + config.ray_length_offset {
                 next_stance = StanceType::Airborne;
-            } else if ray_length < standing_spring.length.current {
+            } else if ray_length < standing_spring_height.length.current {
                 next_stance = StanceType::Standing;
             } else if previous_stance != StanceType::Standing
-                && ray_length < standing_spring.length.current + standing_spring.extension
+                && ray_length
+                    < standing_spring_height.length.current + standing_spring_height.extension
             {
                 next_stance = StanceType::Landing;
             }
@@ -96,12 +118,12 @@ pub fn update_player_stance(
             stance.lockout -= time.delta_secs();
             stance.lockout = f32::max(stance.lockout, 0.0);
             if stance.lockout <= 0.0 {
-                //info!("Stance lockout: RELEASED");
+                info!("Stance lockout: RELEASED");
             } else {
-                // info!(
-                //     "Stance lockout: {}",
-                //     format_value_f32(stance.lockout, Some(2), false)
-                // );
+                info!(
+                    "Stance lockout: {}",
+                    format_value_f32(stance.lockout, Some(2), false)
+                );
             }
         }
 
@@ -222,8 +244,11 @@ pub fn apply_standing_spring_force(
             constant_force.0 = Vec3::ZERO;
             gravity_scale.0 = 1.0f32;
         }
-        info!("Constant Force: {}", format_value_vec3(constant_force.0, Some(3), true));
-        info!("Gravity Scale: {}", gravity_scale.0);
+        trace!(
+            "Constant Force: {}",
+            format_value_vec3(constant_force.0, Some(3), true)
+        );
+        trace!("Gravity Scale: {}", gravity_scale.0);
     }
 }
 

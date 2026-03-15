@@ -30,7 +30,7 @@ impl Default for PlayerControlConfig {
             ride_spring_strength: 3500.0,
             ride_spring_damper: 300.0,
             stance_lockout: 0.25,
-            jump_strength: 150.0,
+            jump_strength: 250.0,
             default_movement_speed: 10.0,
             sprint_speed_factor: 2.0,
             _movement_decay: 0.90,
