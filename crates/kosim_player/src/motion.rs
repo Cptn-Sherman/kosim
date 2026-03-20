@@ -1,15 +1,14 @@
 use avian3d::prelude::{
-    ConstantForce, Forces, LinearVelocity, RayHits, RigidBodyForces, forces::ForcesItem,
+    ConstantForce, LinearVelocity
 };
 use bevy::{
     ecs::{
         component::Component,
-        entity::Entity,
         query::With,
         system::{Query, Res},
     },
     input::{ButtonInput, keyboard::KeyCode},
-    log::{info, trace, warn},
+    log::{trace, warn},
     math::{EulerRot, Quat, Vec3},
     time::Time,
     transform::components::Transform,
@@ -23,8 +22,7 @@ use kosim_utility::{
 
 use crate::{
     Player,
-    body::{Body, IgnoreRayCollision, Stance, StanceType, StandingSpringForce, compute_ray_length},
-    config::PlayerControlConfig,
+    config::PlayerControlConfig, stance::{Stance, StanceType},
 };
 
 #[derive(Component)]
@@ -88,7 +86,7 @@ pub fn player_motion_system(
         format_value_f32(motion.movement_speed.target, Some(4), true)
     );
 
-    // * UPDATE MOVEMENT_VECTOR AND LERP
+    //* - UPDATE MOVEMENT_VECTOR AND LERP -
 
     let mut movement_vector: Vec3 = Vec3::ZERO.clone();
     // Apply the input_vector to the player to update the movement_vector.
@@ -134,12 +132,12 @@ pub fn player_motion_system(
             ((1f32 - f32::cos(0.5 * PI * dot - 0.5 * PI)) / (2.0 - SCALE)) + OFFSET;
         let final_air_time: f32 = motion.movement_speed.current * air_time_scale;
 
-        // info!(
-        //     "final air time movement speed: {}, dot: {}, air scale: {}",
-        //     format_value_f32(final_air_time, Some(3), true),
-        //     format_value_f32(dot, Some(3), true),
-        //     format_value_f32(air_time_scale, Some(3), true)
-        // );
+        trace!(
+            "final air time movement speed: {}, dot: {}, air scale: {}",
+            format_value_f32(final_air_time, Some(3), true),
+            format_value_f32(dot, Some(3), true),
+            format_value_f32(air_time_scale, Some(3), true)
+        );
 
         motion.linear_velocity_interp.target.x +=
             motion.movement_vector.current.x * final_air_time * time.delta_secs();
@@ -170,58 +168,6 @@ pub fn player_motion_system(
     motion.moving = motion.movement_vector.current.length() >= 0.01;
 }
 
-pub fn player_jump_system(
-    mut player_query: Query<
-        (
-            Entity,
-            Forces,
-            &mut StandingSpringForce,
-            &mut ConstantForce,
-            &Motion,
-            &mut Stance,
-            &Body,
-            &RayHits,
-        ),
-        With<Player>,
-    >,
-    ignored_entities: Query<Entity, With<IgnoreRayCollision>>,
-    player_config: Res<PlayerControlConfig>,
-    keys: Res<ButtonInput<KeyCode>>,
-) {
-    let (
-        entity,
-        mut forces,
-        mut standing_spring,
-        mut constant_force,
-        motion,
-        mut stance,
-        body,
-        ray_hits,
-    ) = player_query.single_mut().expect("We do some errors");
-    // * -   - JUMPING LOGIC   -
-
-    if stance.current == StanceType::Standing
-        && keys.pressed(KeyCode::Space)
-        && stance.lockout <= 0.0
-    {
-        let ray_length: f32 = compute_ray_length(entity, ignored_entities, ray_hits);
-        stance.lockout = player_config.stance_lockout;
-        stance.current = StanceType::Airborne;
-        constant_force.y = 0.0;
-
-        apply_jump_force(
-            &mut forces,
-            &player_config,
-            ray_length,
-            &mut stance,
-            &mut standing_spring,
-            &motion,
-            &body,
-        );
-    }
-}
-
-// This function and many of its helpers are ripped from, bevy_fly_cam.
 pub fn player_rotation_system(
     mut player_query: Query<&mut Transform, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -231,91 +177,16 @@ pub fn player_rotation_system(
         // Get the current rotation components.
         let (mut player_yaw, player_pitch, player_roll) =
             player_transform.rotation.to_euler(EulerRot::default());
+
         // Ensure the player is not holding down the free look key.
         if !keys.pressed(KeyCode::AltLeft) {
             player_yaw -= (input.focus_delta.x).to_radians();
         }
+
         // Apply the current rotation.
         player_transform.rotation =
             Quat::from_euler(EulerRot::default(), player_yaw, player_pitch, player_roll);
     }
-}
-
-pub fn apply_jump_force(
-    forces: &mut ForcesItem<'_, '_>,
-    player_config: &Res<PlayerControlConfig>,
-    ray_length: f32,
-    stance: &mut Stance,
-    standing_spring: &mut StandingSpringForce,
-    motion: &Motion,
-    body: &Body,
-) {
-    // Apply the stance cooldown now that we are jumping.
-    stance.lockout = player_config.stance_lockout;
-
-    let half_jump_strength: f32 = player_config.jump_strength / 2.0;
-    let clamped_jump_force: f32 =
-        compute_clamped_jump_force_factor(&body, &standing_spring, ray_length);
-
-    // todo: make this value changable.
-    
-    let dynamic_jump_strength: f32 = half_jump_strength + (half_jump_strength * clamped_jump_force);
-
-    // maybe instead of half the strength getting added to the up we added it directionally only so you always jump x height but can
-    // use more of the timing to aid in forward momentum.
-
-    // find the movement vector in the x and z direction.
-    let jump_direction: Vec3 = motion
-        .movement_vector
-        .current
-        .mul_add(Vec3::ONE, Vec3::from_array([0.0, 1.0, 0.0]))
-        .normalize_or_zero();
-
-    let impulse_vec: Vec3 = jump_direction * dynamic_jump_strength;
-
-    trace!(
-        "impulse_vec: {}",
-        format_value_vec3(impulse_vec, Some(3), true)
-    );
-
-    // apply the jump force.
-    forces.apply_linear_impulse(impulse_vec.into());
-
-    info!(
-        "Jumped with {}/{} due to distance to ground, /njump_factor {}, of ray length: {}",
-        dynamic_jump_strength, player_config.jump_strength, clamped_jump_force, ray_length
-    );
-}
-
-fn compute_clamped_jump_force_factor(
-    body: &Body,
-    standing_spring: &StandingSpringForce,
-    ray_length: f32,
-) -> f32 {
-    // Constants defined elsewhere in the code
-    let full_standing_ray_length: f32 = standing_spring.length.current;
-    let half_standing_ray_length: f32 =
-        standing_spring.length.current - (body.current_body_height / 4.0);
-    // This value represents the range of acceptable ray lengths for the player.
-    let standing_ray_length_range: f32 = full_standing_ray_length - half_standing_ray_length;
-
-    // Ensure the input is within the specified range
-    let clamped_ray_length = f32::clamp(
-        ray_length,
-        half_standing_ray_length,
-        standing_spring.length.current,
-    );
-
-    // Apply the linear transformation
-    // Step 1: Normalize clamped_ray_length to a value between 0.0 and 1.0.
-    let normalized_distance =
-        (clamped_ray_length - half_standing_ray_length) / standing_ray_length_range;
-
-    // Step 2: Subtract the normalized distance from CAPSULE_HEIGHT.
-    let result: f32 = body.current_body_height - normalized_distance;
-
-    // Ensure the output is within the range [0.0, 1.0].
-    f32::clamp(result, 0.0, 1.0)
 }
 
 pub fn apply_spring_force(

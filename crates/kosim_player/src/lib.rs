@@ -13,6 +13,7 @@ use bevy::{
         schedule::IntoScheduleConfigs,
         system::{Commands, Query, Res, ResMut},
     },
+    input::{gamepad::GamepadButton, keyboard::KeyCode},
     log::{info, warn},
     math::{Dir3, Vec3, primitives::Sphere},
     mesh::{Mesh, Mesh3d, Meshable},
@@ -20,22 +21,21 @@ use bevy::{
     transform::components::Transform,
     utils::default,
 };
-use kosim_camera::{GameCamera, first_person_camera::smooth_camera};
+use bevy_enhanced_input::{
+    EnhancedInputPlugin, action::Action, actions, bindings, prelude::InputContextAppExt,
+};
+use kosim_camera::GameCamera;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
 use crate::{
-    actions::{
-        crouch::toggle_crouching,
-        sprint::toggle_sprinting,
-        step::{
-            ACTION_STEP_DELTA_DEFAULT, ActionStep, FootstepDirection, FootstepEvent,
-            load_footstep_sfx, play_footstep_sfx, tick_footstep,
-        },
+    action::{
+        ACTION_STEP_DELTA_DEFAULT, ActionStep, Crouch, FootstepDirection, FootstepEvent, Sprint,
+        detect_action_crouching, detect_action_jumping, detect_action_sprinting, load_footstep_sfx,
+        play_footstep_sfx, tick_footstep,
     },
     body::{
-        Body, IgnoreRayCollision, PlayerColliderBundle, PlayerColliderFlag, Stance, StanceType,
-        StandingSpringForce, apply_standing_spring_force, lock_angular_velocity,
-        update_player_stance,
+        Body, IgnoreRayCollision, PlayerColliderBundle, PlayerColliderFlag, StandingSpringForce,
+        apply_standing_spring_force, lock_angular_velocity,
     },
     config::PlayerControlConfig,
     debug::{
@@ -46,21 +46,25 @@ use crate::{
         update_debug_position, update_debug_rotation,
     },
     focus::{Focus, camera_look_system},
-    motion::{Motion, player_jump_system, player_motion_system, player_rotation_system},
+    motion::{Motion, player_motion_system, player_rotation_system},
+    stance::{Stance, StanceType, compute_next_stance},
 };
 
-pub mod actions;
+pub mod action;
 pub mod body;
 pub mod config;
 pub mod debug;
 pub mod focus;
 pub mod motion;
+pub mod stance;
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerControlConfig::default()); // later we will load from some toml file
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<Player>();
         app.add_systems(
             Startup,
             (
@@ -77,10 +81,10 @@ impl Plugin for PlayerPlugin {
                 camera_look_system,
                 player_rotation_system,
                 player_motion_system,
-                player_jump_system,
-                update_player_stance,
-                toggle_crouching,
-                toggle_sprinting,
+                compute_next_stance,
+                detect_action_jumping,
+                detect_action_crouching,
+                detect_action_sprinting,
                 apply_standing_spring_force,
                 lock_angular_velocity,
                 play_footstep_sfx,
@@ -179,9 +183,8 @@ pub fn spawn_player(
                 },
                 stance: Stance {
                     current: StanceType::Standing,
-                    _grounded: false,
                     crouched: false,
-                    lockout: 0.0,
+                    lockout_timer: 0.0,
                 },
                 focus: Focus {},
                 action_step: ActionStep {
@@ -202,6 +205,8 @@ pub fn spawn_player(
             TransformInterpolation,
             IgnoreRayCollision,
             Player,
+            actions!(Player[(Action::<Crouch>::new(), bindings![KeyCode::ControlLeft, GamepadButton::LeftThumb]),(
+                Action::<Sprint>::new(), bindings![KeyCode::ShiftLeft, GamepadButton::South])])
         ))
         .with_children(|parent| {
             parent.spawn((

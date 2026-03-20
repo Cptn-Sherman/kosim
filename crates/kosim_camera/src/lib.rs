@@ -82,7 +82,6 @@ pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
             Camera::default(),
             Transform::from_xyz(0.0, 0.0, 0.0).looking_to(Vec3::ZERO, Vec3::Y),
             Tonemapping::ReinhardLuminance,
-            Atmosphere::EARTH,
             AtmosphereSettings {
                 rendering_method: AtmosphereMode::Raymarched,
                 aerial_view_lut_max_distance: 3.2e5,

@@ -1,4 +1,4 @@
-use bevy::{asset::Handle, color::Color, ecs::bundle::Bundle, text::{Font, FontSmoothing, LineHeight, TextColor, TextFont}, ui::widget::Text};
+use bevy::{asset::Handle, color::Color, ecs::bundle::Bundle, text::{Font, FontFeatures, FontSmoothing, FontWeight, LineHeight, TextColor, TextFont}, ui::widget::Text};
 
 
 pub const DEFAULT_FONT_PATH: &str = "fonts/AshlanderPixel_fixed.ttf";
@@ -30,7 +30,8 @@ pub fn gen_text_section(
             font,
             font_size: size.unwrap_or(DEFAULT_FONT_SIZE),
             font_smoothing: FontSmoothing::AntiAliased,
-            line_height: LineHeight::RelativeToFont(1.2),
+            weight: FontWeight::BOLD,
+            font_features: FontFeatures::default(),
         },
         TextColor(color.unwrap_or(Color::WHITE)),
     )

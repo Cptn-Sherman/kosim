@@ -9,17 +9,18 @@ kosim_camera = { version = "0.1.0", path = "crates/kosim_camera" }
 kosim_input = { version = "0.1.0", path = "crates/kosim_input" }
 kosim_player = { version = "0.1.0", path = "crates/kosim_player" }
 kosim_utility = { version = "0.1.0", path = "crates/kosim_utility" }
-bevy = { version = "0.17.3", features = [
+bevy = { version = "0.18.1", features = [
     "dynamic_linking",
     "file_watcher",
     "embedded_watcher",
     "bevy_dev_tools",
 ] }
-bevy_dylib = "0.17.3"
-bevy_turborand = "0.12.0"
-avian3d = { version = "0.4" }
-bevy_kira_audio = { version = "0.24.0", features = ["wav"] }
-bevy_infinite_grid = "0.17"
+bevy_dylib = "0.18.1"
+bevy_turborand = "0.13.0"
+avian3d = { version = "0.6" }
+bevy_kira_audio = { version = "0.25.0", features = ["wav"] }
+bevy_infinite_grid = "0.18"
+bevy_enhanced_input = "0.24.1"
 
 [workspace]
 resolver = "2"                                               # Important! wgpu/Bevy needs this!
