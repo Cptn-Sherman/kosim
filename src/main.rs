@@ -5,11 +5,9 @@ use avian3d::{
     prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody},
 };
 use bevy::{
-    asset::RenderAssetUsages,
     color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
     light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk},
-    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
     prelude::*,
     render::render_asset::RenderAssetBytesPerFrame,
 };
@@ -19,6 +17,7 @@ use bevy_turborand::prelude::RngPlugin;
 use kosim_camera::KosimCameraPlugin;
 use kosim_input::{InputConfig, KosimInputPlugin, binding::Bindings, input::Input};
 use kosim_player::PlayerPlugin;
+use kosim_utility::mesh::generate_plane_mesh;
 
 fn main() {
     App::new()
@@ -45,7 +44,7 @@ fn main() {
                     enabled: true,
                     refresh_interval: Duration::from_millis(100),
                     text_config: TextFont {
-                        font_size: 14.0,
+                        font_size: 16.0,
                         ..default()
                     },
                     frame_time_graph_config: FrameTimeGraphConfig {
@@ -238,70 +237,4 @@ pub fn close_on_key(
             commands.entity(window).despawn();
         }
     }
-}
-
-// * --- Generate Meshes ---
-pub fn generate_plane_mesh(
-    meshes: &mut ResMut<Assets<Mesh>>,
-    width: f32,
-    length: f32,
-    uv_scale: f32,
-) -> Handle<Mesh> {
-    let half_width = width / 2.0;
-    let half_length = length / 2.0;
-
-    let vertices = vec![
-        // Top face
-        (
-            [-half_width, 0.0, half_length],
-            [0.0, 1.0, 0.0],
-            [0.0, uv_scale * length],
-        ), // Top-left
-        (
-            [half_width, 0.0, half_length],
-            [0.0, 1.0, 0.0],
-            [uv_scale * width, uv_scale * length],
-        ), // Top-right
-        (
-            [half_width, 0.0, -half_length],
-            [0.0, 1.0, 0.0],
-            [uv_scale * width, 0.0],
-        ), // Bottom-right
-        (
-            [-half_width, 0.0, -half_length],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0],
-        ), // Bottom-left
-    ];
-
-    let indices = vec![
-        0, 1, 2, 2, 3, 0, // top face
-    ];
-
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut uvs = Vec::new();
-
-    for (position, normal, uv) in vertices {
-        positions.push(position);
-        normals.push(normal);
-        uvs.push(uv);
-    }
-
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    mesh.insert_attribute(
-        Mesh::ATTRIBUTE_POSITION,
-        VertexAttributeValues::from(positions),
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, VertexAttributeValues::from(normals));
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, VertexAttributeValues::from(uvs));
-    mesh.insert_indices(Indices::U32(indices));
-
-    meshes.add(
-        mesh.with_generated_tangents()
-            .expect("Failed to generate tangents for the mesh"),
-    )
 }

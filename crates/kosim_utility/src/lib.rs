@@ -1,6 +1,7 @@
 
 use std::ops::{Add, Mul, Sub};
 
+pub mod mesh;
 pub mod format_value;
 pub mod interpolated_value;
 

@@ -13,7 +13,7 @@ use bevy::input::keyboard::KeyCode;
 use bevy::light::VolumetricFog;
 use bevy::log::info;
 use bevy::math::Vec3;
-use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings};
+use bevy::pbr::{AtmosphereMode, AtmosphereSettings};
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::transform::components::Transform;
 use bevy::utils::default;
@@ -30,6 +30,8 @@ pub mod first_person_camera;
 pub mod freecam;
 pub mod third_person_camera;
 
+const DEFAULT_SCREENSHOT_FORMAT: &str = "png";
+
 #[derive(Resource)]
 pub struct CameraConfig {
     pub hdr: bool,
@@ -41,8 +43,8 @@ impl Default for CameraConfig {
     fn default() -> Self {
         Self {
             hdr: true,
-            fov: 75.0,
-            screenshot_format: "png".into(),
+            fov: 80.0,
+            screenshot_format: DEFAULT_SCREENSHOT_FORMAT.into(),
         }
     }
 }
