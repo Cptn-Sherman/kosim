@@ -1,19 +1,21 @@
 use avian3d::prelude::TransformInterpolation;
 use bevy::app::{App, FixedUpdate, Plugin, PreStartup, Startup};
-use bevy::asset::{AssetServer, Handle};
-use bevy::camera::{Camera, Camera3d, Exposure};
+use bevy::asset::{AssetServer, Assets, Handle};
+use bevy::camera::{Camera, Camera3d, ClearColor, Exposure};
+use bevy::color::Color;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
 use bevy::ecs::event::Event;
 use bevy::ecs::message::{Message, MessageReader};
 use bevy::ecs::resource::Resource;
-use bevy::ecs::system::{Commands, Res};
+use bevy::ecs::system::{Commands, Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use bevy::light::VolumetricFog;
+use bevy::light::{AtmosphereEnvironmentMapLight, VolumetricFog};
 use bevy::log::info;
 use bevy::math::Vec3;
-use bevy::pbr::{AtmosphereMode, AtmosphereSettings};
+use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium};
+use bevy::post_process::bloom::Bloom;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::transform::components::Transform;
 use bevy::utils::default;
@@ -23,7 +25,7 @@ use kosim_input::binding::Bindings;
 use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
-use crate::first_person_camera::LeanCameraSystem;
+use crate::first_person_camera::DynamicCameraMovement;
 use crate::freecam::{create_free_camera, move_free_camera};
 
 pub mod first_person_camera;
@@ -54,14 +56,13 @@ pub struct KosimCameraPlugin;
 impl Plugin for KosimCameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(CameraConfig::default())
+            .insert_resource(ClearColor(Color::BLACK))
             .add_systems(PreStartup, (create_camera, create_free_camera))
             .add_systems(Startup, load_toggle_camera_soundfxs)
             .add_systems(
                 FixedUpdate,
                 (
                     take_screenshot,
-                    //swap_camera_target,
-                    //smooth_camera,
                     move_free_camera,
                     play_toggle_camera_soundfx,
                 ),
@@ -73,7 +74,11 @@ impl Plugin for KosimCameraPlugin {
 #[derive(Component)]
 pub struct GameCamera;
 
-pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
+pub fn create_camera(
+    mut commands: Commands,
+    camera_config: Res<CameraConfig>,
+    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+) {
     info!(
         "CameraConfig {{ hdr: {}, fov: {}, screenshot_format: \"{}\" }}",
         camera_config.hdr, camera_config.fov, camera_config.screenshot_format
@@ -82,7 +87,7 @@ pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
         .spawn((
             Camera3d::default(),
             Camera::default(),
-            Transform::from_xyz(0.0, 0.0, 0.0).looking_to(Vec3::ZERO, Vec3::Y),
+            Transform::IDENTITY.looking_to(Vec3::ZERO, Vec3::Y),
             Tonemapping::ReinhardLuminance,
             AtmosphereSettings {
                 rendering_method: AtmosphereMode::Raymarched,
@@ -90,10 +95,13 @@ pub fn create_camera(mut commands: Commands, camera_config: Res<CameraConfig>) {
                 scene_units_to_m: 1.0,
                 ..Default::default()
             },
+            Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
             Exposure::SUNLIGHT,
+            Bloom::NATURAL,
+            AtmosphereEnvironmentMapLight::default(),
             GameCamera,
             TransformInterpolation,
-            LeanCameraSystem {
+            DynamicCameraMovement {
                 lean: InterpolatedValue::<Vec3>::new(Vec3::from_array([0.0, 0.0, 0.0]), 2.0),
                 lock_lean: 0.0,
             },

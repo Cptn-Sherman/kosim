@@ -6,14 +6,14 @@ pub const ROTATION_AMOUNT: f32 = 4.0;
 pub const LEAN_LOCKOUT_TIME: f32 = 0.15;
 
 #[derive(Component)]
-pub struct LeanCameraSystem {
+pub struct DynamicCameraMovement {
     pub lean: InterpolatedValue<Vec3>,
     pub lock_lean: f32,
 }
 
 pub fn smooth_camera(
     mut camera_query: Query<
-        (&mut Transform, &mut LeanCameraSystem),
+        (&mut Transform, &mut DynamicCameraMovement),
         With<Camera3d>,
     >,
     input: Res<Input>,

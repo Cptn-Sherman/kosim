@@ -17,7 +17,6 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Clone)]
-// each of these stance types needs to have a movement speed calculation, a
 pub enum StanceType {
     Airborne,
     Standing,
