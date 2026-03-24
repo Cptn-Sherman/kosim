@@ -46,7 +46,7 @@ use crate::{
         update_debug_position, update_debug_rotation,
     },
     focus::{Focus, camera_look_system},
-    motion::{Motion, TouchedEntities, player_motion_system, player_rotation_system, run_move_and_slide},
+    motion::{Motion, SmoothTurn, TouchedEntities, player_motion_system, player_rotation_system, run_move_and_slide},
     stance::{Stance, StanceType, compute_next_stance},
 };
 

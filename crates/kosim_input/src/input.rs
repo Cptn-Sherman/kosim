@@ -9,7 +9,6 @@ use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::log::trace;
 use bevy::math::{Vec2, Vec3};
-use bevy::platform::time;
 use bevy::time::Time;
 use bevy::window::{PrimaryWindow, Window};
 use kosim_utility::exp_decay;
@@ -34,7 +33,7 @@ impl Default for Input {
         Self {
             movement_raw: Vec3::ZERO,
             focus_delta_raw: Vec2::ZERO,
-            focus_delta_smoothed: InterpolatedValue::new(Vec2::ZERO, 24.0),
+            focus_delta_smoothed: InterpolatedValue::new(Vec2::ZERO, 10.0),
         }
     }
 }

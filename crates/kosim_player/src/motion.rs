@@ -161,6 +161,12 @@ pub fn player_motion_system(
     motion.moving = motion.movement_vector.current.length() >= 0.01;
 }
 
+#[derive(Component)]
+pub struct SmoothTurn {
+    pub yaw: InterpolatedValue<f32>,
+    pub pitch: InterpolatedValue<f32>,
+}
+
 pub fn player_rotation_system(
     mut player_query: Query<&mut Transform, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
