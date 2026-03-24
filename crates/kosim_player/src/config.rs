@@ -3,21 +3,21 @@ use bevy::ecs::resource::Resource;
 
 #[derive(Resource)]
 pub struct PlayerControlConfig {
-    pub(crate) capsule_height: f32,
-    pub(crate) ride_height: f32,
-    pub(crate) ride_height_step_offset: f32, // this is the amount we add when a step is taken to simulate head bob.
-    pub(crate) ray_length_offset: f32,
-    pub(crate) ride_spring_strength: f32,
-    pub(crate) ride_spring_damper: f32,
-    pub(crate) stance_lockout: f32,
-    pub(crate) jump_strength: f32,
-    pub(crate) default_movement_speed: f32,
-    pub(crate) sprint_speed_factor: f32,
-    pub(crate) _movement_decay: f32,
-    pub(crate) _mouse_look_sensitivity: f32,
-    pub(crate) _gamepad_look_sensitivity: f32,
-    pub(crate) _enable_view_bobbing: bool,
-    pub(crate) crouched_height_factor: f32,
+    pub capsule_height: f32,
+    pub ride_height: f32,
+    pub ride_height_step_offset: f32, // this is the amount we add when a step is taken to simulate head bob.
+    pub ray_length_offset: f32,
+    pub ride_spring_strength: f32,
+    pub ride_spring_damper: f32,
+    pub stance_lockout: f32,
+    pub jump_strength: f32,
+    pub default_movement_speed: f32,
+    pub sprint_speed_factor: f32,
+    pub _movement_decay: f32,
+    pub _mouse_look_sensitivity: f32,
+    pub _gamepad_look_sensitivity: f32,
+    pub _enable_view_bobbing: bool,
+    pub crouched_height_factor: f32,
 }
 
 impl Default for PlayerControlConfig {
