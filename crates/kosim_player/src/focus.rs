@@ -37,13 +37,13 @@ pub fn camera_look_system(
         // Check for free look movement. Allowing the user to turn their head while maintaining a movement direction.
         if keys.pressed(key_bindings.action_enable_freelook.key) {
             // todo: add gamepad check.
-            yaw -= input.focus_delta.x.to_radians();
+            yaw -= input.focus_delta_smoothed.current.x.to_radians();
             yaw = yaw.clamp(-MAX_FREE_LOOK_ANGLE, MAX_FREE_LOOK_ANGLE);
         } else {
             yaw = exp_decay(yaw, 0.0, 8.0, time.delta_secs());
         }
 
-        pitch -= input.focus_delta.y.to_radians();
+        pitch -= input.focus_delta_smoothed.current.y.to_radians();
         // Prevent the Camera from wrapping over itself when looking up or down.
         pitch = pitch.clamp(-1.54, 1.54);
         // Order is important to prevent unintended roll.

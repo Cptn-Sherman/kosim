@@ -1,7 +1,7 @@
 use avian3d::prelude::TransformInterpolation;
 use bevy::app::{App, FixedUpdate, Plugin, PreStartup, Startup};
 use bevy::asset::{AssetServer, Assets, Handle};
-use bevy::camera::{Camera, Camera3d, ClearColor, Exposure};
+use bevy::camera::{self, Camera, Camera3d, ClearColor, Exposure};
 use bevy::color::Color;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
@@ -25,7 +25,7 @@ use kosim_input::binding::Bindings;
 use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
-use crate::first_person_camera::DynamicCameraMovement;
+use crate::first_person_camera::{DynamicCameraMovement, camera_lean};
 use crate::freecam::{create_free_camera, move_free_camera};
 
 pub mod first_person_camera;
@@ -65,6 +65,7 @@ impl Plugin for KosimCameraPlugin {
                     take_screenshot,
                     move_free_camera,
                     play_toggle_camera_soundfx,
+                    camera_lean,
                 ),
             )
             .add_message::<ToggleCameraEvent>();

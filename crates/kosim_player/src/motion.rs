@@ -1,17 +1,10 @@
-use avian3d::prelude::{
-    ConstantForce, LinearVelocity
-};
+use avian3d::{math::{AdjustPrecision, AsF32}, prelude::{
+    Collider, ConstantForce, LinearVelocity, MoveAndSlide, MoveAndSlideConfig, MoveAndSlideHitResponse, MoveAndSlideOutput, SpatialQueryFilter
+}};
 use bevy::{
-    ecs::{
-        component::Component,
-        query::With,
-        system::{Query, Res},
-    },
-    input::{ButtonInput, keyboard::KeyCode},
-    log::{trace, warn},
-    math::{EulerRot, Quat, Vec3},
-    time::Time,
-    transform::components::Transform,
+    color::palettes::tailwind, ecs::{
+        component::Component, entity::{Entity, EntityHashSet}, query::With, system::{Query, Res}
+    }, gizmos::gizmos::Gizmos, input::{ButtonInput, keyboard::KeyCode}, log::{info, trace, warn}, math::{EulerRot, Quat, Vec3}, prelude::{Deref, DerefMut}, time::Time, transform::components::Transform
 };
 use kosim_input::input::Input;
 use kosim_utility::{
@@ -180,7 +173,7 @@ pub fn player_rotation_system(
 
         // Ensure the player is not holding down the free look key.
         if !keys.pressed(KeyCode::AltLeft) {
-            player_yaw -= (input.focus_delta.x).to_radians();
+            player_yaw -= (input.focus_delta_smoothed.current.x).to_radians();
         }
 
         // Apply the current rotation.
@@ -212,4 +205,66 @@ pub fn apply_spring_force(
         format_value_f32(ray_length, Some(3), true),
         format_value_f32(ride_height, Some(3), true)
     );
+}
+
+/// The entities touched during the last `move_and_slide` call. Stored for debug printing.
+#[derive(Component, Default, Deref, DerefMut)]
+pub struct TouchedEntities(EntityHashSet);
+
+/// System to run the move and slide algorithm, updating the player's transform and velocity.
+///
+/// This replaces Avian's default "position integration" that moves kinematic bodies based on their
+/// velocity without any collision handling.
+pub fn run_move_and_slide(
+    mut query: Query<
+        (
+            Entity,
+            &mut Transform,
+            &mut LinearVelocity,
+            &mut TouchedEntities,
+            &Collider,
+        ),
+        With<Player>,
+    >,
+    move_and_slide: MoveAndSlide,
+    time: Res<Time>,
+    mut gizmos: Gizmos,
+) {
+    for (entity, mut transform, mut lin_vel, mut touched, collider) in &mut query {
+        touched.clear();
+        // Perform move and slide
+        let MoveAndSlideOutput {
+            position,
+            projected_velocity,
+        } = move_and_slide.move_and_slide(
+            collider,
+            transform.translation.adjust_precision(),
+            transform.rotation.adjust_precision(),
+            lin_vel.0,
+            time.delta(),
+            &MoveAndSlideConfig::default(),
+            &SpatialQueryFilter::from_excluded_entities([entity]),
+            |hit| {
+                // For each collision, draw debug gizmos
+                if hit.intersects() {
+                    gizmos.circle(transform.translation, 33.0, tailwind::RED_600);
+                } else {
+                    gizmos.arrow(
+                        hit.point.f32(),
+                        (hit.point
+                            + hit.normal.adjust_precision() * hit.collision_distance
+                                / time.delta_secs().adjust_precision())
+                        .f32(),
+                        tailwind::EMERALD_400,
+                    );
+                }
+                touched.insert(hit.entity);
+                MoveAndSlideHitResponse::Accept
+            },
+        );
+
+        // Update transform and velocity
+        transform.translation = position.f32();
+        lin_vel.0 = projected_velocity;
+    }
 }

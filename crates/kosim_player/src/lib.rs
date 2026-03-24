@@ -34,7 +34,7 @@ use crate::{
         play_footstep_sfx, tick_footstep,
     },
     body::{
-        Body, IgnoreRayCollision, PlayerColliderBundle, PlayerColliderFlag, StandingSpringForce,
+        Body, IgnoreRayCollision, StandingSpringForce,
         apply_standing_spring_force, lock_angular_velocity,
     },
     config::PlayerControlConfig,
@@ -46,7 +46,7 @@ use crate::{
         update_debug_position, update_debug_rotation,
     },
     focus::{Focus, camera_look_system},
-    motion::{Motion, player_motion_system, player_rotation_system},
+    motion::{Motion, TouchedEntities, player_motion_system, player_rotation_system, run_move_and_slide},
     stance::{Stance, StanceType, compute_next_stance},
 };
 
@@ -81,6 +81,7 @@ impl Plugin for PlayerPlugin {
                 camera_look_system,
                 player_rotation_system,
                 player_motion_system,
+                run_move_and_slide,
                 compute_next_stance,
                 detect_action_jumping,
                 detect_action_crouching,
@@ -203,21 +204,16 @@ pub fn spawn_player(
                 ..default()
             })),
             TransformInterpolation,
+            CustomPositionIntegration,
+            TouchedEntities::default(),
+            CollidingEntities::default(),
+            collider.clone(),
             IgnoreRayCollision,
             Player,
             actions!(Player[(Action::<Crouch>::new(), bindings![KeyCode::ControlLeft, GamepadButton::LeftThumb]),(
                 Action::<Sprint>::new(), bindings![KeyCode::ShiftLeft, GamepadButton::South])])
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                PlayerColliderBundle {
-                    collider: collider.clone(),
-                },
-                PlayerColliderFlag,
-                IgnoreRayCollision,
-            ));
-        });
-    // info!("Spawned Player Actor");
+        ));
+        info!("Spawned Player Actor");
 }
 
 fn attached_camera_system(
