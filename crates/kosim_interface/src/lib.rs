@@ -27,7 +27,7 @@ pub const YELLOW_GREEN_TEXT_COLOR: Color = Color::hsv(0.9, 0.69, 0.58);
 pub const RED_TEXT_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
 #[allow(dead_code)]
 pub const GOLD_TEXT_COLOR: Color = Color::srgb(1.0, 0.72, 0.0);
-pub const BORDER_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
+pub const BORDER_COLOR: Color = Color::srgb(0.6, 0.6, 0.6);
 
 #[allow(dead_code)]
 pub fn gen_text_section(
@@ -98,12 +98,12 @@ pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
                     align_items: AlignItems::Center,
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(8.0),
-                    top: Val::Px(8.0),
+                    top: Val::Px(20.0),
                     padding: UiRect::all(Val::Px(8.0)),
-                    border: UiRect::all(Val::Px(2.0)),
+                    border: UiRect::all(Val::Px(2.5)),
                     ..Default::default()
                 },
-                BackgroundColor(Color::srgba(0.05, 0.05, 0.05, 0.85)),
+                BackgroundColor(Color::srgba(0.05, 0.05, 0.05, 0.75)),
                 BorderColor::all(BORDER_COLOR),
             ))
             .with_children(|parent| {
