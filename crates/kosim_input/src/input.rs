@@ -96,6 +96,7 @@ pub fn update_input_resource(
         }
     }
 
+    input.focus_delta_smoothed.target = input.focus_delta_raw;
     input.focus_delta_smoothed.current = exp_decay::<Vec2>(
         input.focus_delta_smoothed.current,
         input.focus_delta_raw,

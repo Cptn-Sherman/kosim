@@ -16,6 +16,7 @@ use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween}
 use bevy_turborand::prelude::RngPlugin;
 use kosim_camera::KosimCameraPlugin;
 use kosim_input::{InputConfig, KosimInputPlugin, binding::Bindings, input::Input};
+use kosim_interface::create_sample_hud;
 use kosim_player::PlayerPlugin;
 use kosim_utility::mesh::generate_plane_mesh;
 
@@ -42,7 +43,7 @@ fn main() {
             FpsOverlayPlugin {
                 config: FpsOverlayConfig {
                     enabled: true,
-                    refresh_interval: Duration::from_millis(100),
+                    refresh_interval: Duration::from_millis(1000),
                     text_config: TextFont {
                         font_size: 16.0,
                         ..default()
@@ -62,7 +63,7 @@ fn main() {
             // SunMovePlugin,
             // RandomStarsPlugin,
         ))
-        .add_systems(Startup, (setup, start_background_audio).chain())
+        .add_systems(Startup, (setup, start_background_audio, create_sample_hud).chain())
         .add_systems(Update, (close_on_key,))
         .run();
 }
@@ -86,7 +87,6 @@ fn setup(
     mut standard_materials: ResMut<Assets<StandardMaterial>>,
     //mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, BlockoutMaterialExt>>>,
 ) {
-    // info!("Percentage Test: {}", format_percentage::<f32>(120.0f32));
     commands.spawn(InfiniteGridBundle::default());
 
     let _cascade_shadow_config = CascadeShadowConfigBuilder {

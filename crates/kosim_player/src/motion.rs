@@ -82,6 +82,7 @@ pub fn player_motion_system(
     //* - UPDATE MOVEMENT_VECTOR AND LERP -
 
     let mut movement_vector: Vec3 = Vec3::ZERO.clone();
+    
     // Apply the input_vector to the player to update the movement_vector.
     movement_vector += player_transform.forward().as_vec3() * input.movement_raw.z;
     movement_vector += player_transform.right().as_vec3() * input.movement_raw.x;
@@ -161,12 +162,6 @@ pub fn player_motion_system(
     motion.moving = motion.movement_vector.current.length() >= 0.01;
 }
 
-#[derive(Component)]
-pub struct SmoothTurn {
-    pub yaw: InterpolatedValue<f32>,
-    pub pitch: InterpolatedValue<f32>,
-}
-
 pub fn player_rotation_system(
     mut player_query: Query<&mut Transform, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -179,7 +174,7 @@ pub fn player_rotation_system(
 
         // Ensure the player is not holding down the free look key.
         if !keys.pressed(KeyCode::AltLeft) {
-            player_yaw -= (input.focus_delta_smoothed.current.x).to_radians();
+            player_yaw -= (input.focus_delta_raw.x).to_radians();
         }
 
         // Apply the current rotation.

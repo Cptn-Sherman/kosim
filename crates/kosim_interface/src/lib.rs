@@ -1,9 +1,18 @@
 use bevy::{
-    asset::Handle,
+    asset::{AssetServer, Handle},
     color::Color,
-    ecs::bundle::Bundle,
-    text::{Font, FontFeatures, FontSmoothing, FontWeight, TextColor, TextFont},
-    ui::widget::Text,
+    ecs::{
+        bundle::Bundle,
+        system::{Commands, Res},
+    },
+    image::Image,
+    text::{Font, FontFeatures, FontSmoothing, FontWeight, TextColor, TextFont, TextSpan},
+    ui::{
+        AlignItems, BackgroundColor, BorderColor, Display, FlexDirection, JustifyContent, Node,
+        PositionType, UiRect, Val,
+        widget::{ImageNode, Text},
+    },
+    utils::default,
 };
 
 pub const DEFAULT_FONT_PATH: &str = "fonts/AshlanderPixel_fixed.ttf";
@@ -47,3 +56,69 @@ pub fn gen_text_section(
 //         color: Color::WHITE,
 //     }
 // }
+
+pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
+    // Setup the default font
+    let default_font: Handle<Font> = asset_server.load(DEFAULT_DEBUG_FONT_PATH);
+    // Spawn in the crosshair
+    let cursor_size: f32 = 4.0;
+    let crosshair_texture_handle: Handle<Image> =
+        asset_server.load("textures/white_square_crosshair.png");
+
+    // Center Look UI
+    cmd.spawn(Node {
+        width: Val::Percent(100.0),
+        height: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        position_type: PositionType::Absolute,
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn((
+            Node {
+                width: Val::Px(cursor_size),
+                height: Val::Px(cursor_size),
+                ..default()
+            },
+            ImageNode {
+                image: crosshair_texture_handle.into(),
+                ..default()
+            },
+            BackgroundColor(Color::WHITE),
+        ));
+    })
+    .with_children(|parent| {
+        parent
+            .spawn((
+                Node {
+                    display: Display::Flex,
+                    justify_content: JustifyContent::SpaceAround,
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    top: Val::Px(8.0),
+                    padding: UiRect::all(Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(2.0)),
+                    ..Default::default()
+                },
+                BackgroundColor(Color::srgba(0.05, 0.05, 0.05, 0.85)),
+                BorderColor::all(BORDER_COLOR),
+            ))
+            .with_children(|parent| {
+                parent.spawn(gen_text_section(
+                    Some("Yellow Box".to_string()),
+                    Some(10.0),
+                    None,
+                    default_font.clone(),
+                ));
+                parent.spawn(gen_text_section(
+                    Some("E: Take".to_string()),
+                    Some(10.0),
+                    None,
+                    default_font.clone(),
+                ));
+            });
+    });
+}

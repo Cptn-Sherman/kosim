@@ -9,6 +9,7 @@ kosim_camera = { version = "0.1.0", path = "crates/kosim_camera" }
 kosim_input = { version = "0.1.0", path = "crates/kosim_input" }
 kosim_player = { version = "0.1.0", path = "crates/kosim_player" }
 kosim_utility = { version = "0.1.0", path = "crates/kosim_utility" }
+kosim_interface = { version = "0.1.0", path = "crates/kosim_interface" }
 bevy = { version = "0.18.1", features = [
     "dynamic_linking",
     "file_watcher",

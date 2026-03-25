@@ -43,7 +43,7 @@ pub fn camera_look_system(
             yaw = exp_decay(yaw, 0.0, 8.0, time.delta_secs());
         }
 
-        pitch -= input.focus_delta_smoothed.current.y.to_radians();
+        pitch -= input.focus_delta_raw.y.to_radians();
         // Prevent the Camera from wrapping over itself when looking up or down.
         pitch = pitch.clamp(-1.54, 1.54);
         // Order is important to prevent unintended roll.

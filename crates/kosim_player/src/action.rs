@@ -1,10 +1,15 @@
-use avian3d::prelude::{Collider, ConstantForce, Forces, RayHits, WriteRigidBodyForces, forces::ForcesItem};
+use avian3d::prelude::{
+    Collider, ConstantForce, Forces, RayHits, WriteRigidBodyForces, forces::ForcesItem,
+};
 use bevy::{
     ecs::{
         entity::Entity,
         query::With,
         system::{Query, Res, ResMut},
-    }, input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode}, log::{info, trace}, math::Vec3
+    },
+    input::{ButtonInput, gamepad::Gamepad, keyboard::KeyCode},
+    log::{info, trace},
+    math::Vec3,
 };
 
 use bevy_enhanced_input::prelude::InputAction;
@@ -18,12 +23,9 @@ use crate::{
     stance::{Stance, StanceType},
 };
 
-
-
 //** -- JUMPING LOGIC -- */
-
 pub fn detect_action_jumping(
-        mut player_query: Query<
+    mut player_query: Query<
         (
             Entity,
             Forces,
@@ -101,9 +103,9 @@ pub fn apply_jump_force(
         .mul_add(Vec3::ONE, Vec3::from_array([0.0, 1.0, 0.0]))
         .normalize_or_zero();
 
-    let impulse_vec: Vec3 = jump_direction * dynamic_jump_strength;
+    let impulse_vec: Vec3 = jump_direction * player_config.jump_strength;
 
-    trace!(
+    info!(
         "impulse_vec: {}",
         format_value_vec3(impulse_vec, Some(3), true)
     );
@@ -111,7 +113,7 @@ pub fn apply_jump_force(
     // apply the jump force.
     forces.apply_local_linear_impulse(impulse_vec.into());
 
-    info!(
+    trace!(
         "{{ Jump Strength: {}/{}, factor: {}, ray_length: {} }}",
         format_value_f32(dynamic_jump_strength, Some(3), true),
         player_config.jump_strength,
@@ -180,7 +182,6 @@ pub fn detect_action_sprinting(
 }
 
 //* -- CROUCHING -- */
-
 #[derive(InputAction)]
 #[action_output(bool)]
 pub struct Crouch;
@@ -239,12 +240,20 @@ pub fn detect_action_crouching(
     }
 }
 
-
-
 //** -- FOOTSTEP LOGIC -- */
 // todo: This should be moved later on.
 
-use bevy::{asset::{AssetServer, Handle}, ecs::{component::Component, event::Event, message::{Message, MessageReader, MessageWriter}, resource::Resource, system::{Commands}}, time::Time};
+use bevy::{
+    asset::{AssetServer, Handle},
+    ecs::{
+        component::Component,
+        event::Event,
+        message::{Message, MessageReader, MessageWriter},
+        resource::Resource,
+        system::Commands,
+    },
+    time::Time,
+};
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
 use bevy_turborand::{DelegatedRng, GlobalRng};
 use kosim_utility::ternary;

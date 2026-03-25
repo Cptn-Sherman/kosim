@@ -3508,6 +3508,7 @@ dependencies = [
  "bevy_turborand",
  "kosim_camera",
  "kosim_input",
+ "kosim_interface",
  "kosim_player",
  "kosim_utility",
 ]
