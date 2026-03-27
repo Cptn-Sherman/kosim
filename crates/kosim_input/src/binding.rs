@@ -57,7 +57,7 @@ impl Default for Bindings {
                 button: GamepadButton::Start,
             },
             action_toggle_camera_mode: KeyCode::F3,
-            action_close_application: KeyCode::Escape,
+            action_close_application: KeyCode::Delete,
             action_enable_freelook: Binding {
                 key: KeyCode::AltLeft,
                 button: GamepadButton::Z, // <-- idk what key to use here.

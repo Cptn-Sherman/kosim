@@ -35,11 +35,11 @@ fn main() {
             DefaultPlugins,
             KosimInputPlugin,
             KosimCameraPlugin,
+            AudioPlugin,
             RngPlugin::new().with_rng_seed(0),
             PhysicsDebugPlugin::default(),
             PhysicsPlugins::default(),
             PlayerPlugin,
-            AudioPlugin,
             FpsOverlayPlugin {
                 config: FpsOverlayConfig {
                     enabled: true,
@@ -58,12 +58,11 @@ fn main() {
                 },
             },
             InfiniteGridPlugin,
-            // bevy_panic_handler::PanicHandler::new().build(),
-            // BlockoutPlugin,
-            // SunMovePlugin,
-            // RandomStarsPlugin,
         ))
-        .add_systems(Startup, (setup, start_background_audio, create_sample_hud).chain())
+        .add_systems(
+            Startup,
+            (setup, start_background_audio, create_sample_hud).chain(),
+        )
         .add_systems(Update, (close_on_key,))
         .run();
 }
@@ -84,8 +83,7 @@ fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<Audio>) {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut standard_materials: ResMut<Assets<StandardMaterial>>,
-    //mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, BlockoutMaterialExt>>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn(InfiniteGridBundle::default());
 
@@ -97,7 +95,7 @@ fn setup(
     .build();
 
     // create the 'Sun' with volumetric Lighting enabled.
-    let _sun_id = commands
+    commands
         .spawn((
             DirectionalLight {
                 illuminance: light_consts::lux::RAW_SUNLIGHT,
@@ -106,8 +104,7 @@ fn setup(
             },
             Transform::default().with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_4)),
             SunDisk::default(),
-        ))
-        .id();
+        ));
 
     // Plane
     let plane_size: f32 = 128.0;
@@ -117,7 +114,7 @@ fn setup(
         RigidBody::Static,
         Collider::cuboid(plane_size, plane_thickness, plane_size),
         Transform::from_xyz(0.0, 2.0, 0.0),
-        get_sample_material(SKY_400.into(), &mut standard_materials),
+        get_sample_material(SKY_400.into(), &mut materials),
         Mesh3d(generate_plane_mesh(
             &mut meshes,
             plane_size,
@@ -132,72 +129,28 @@ fn setup(
         Collider::cuboid(0.5, 0.5, 0.5),
         Mass(5.0),
         Mesh3d(meshes.add(Cuboid::from_length(0.5))),
-        MeshMaterial3d(standard_materials.add(StandardMaterial {
+        MeshMaterial3d(materials.add(StandardMaterial {
             base_color: AMBER_400.into(),
             ..default()
         })),
         Transform::from_xyz(2.0, 25.0, 2.0),
+
     ));
 
-    // spawn a cube with physics and a material
-    let mini_plateform_cube_size: f32 = 2.0;
-    commands.spawn((
-        RigidBody::Static,
-        Collider::cuboid(
-            mini_plateform_cube_size,
-            mini_plateform_cube_size,
-            mini_plateform_cube_size,
-        ),
-        Mass(5.0),
-        Mesh3d(meshes.add(Cuboid::from_length(mini_plateform_cube_size))),
-        get_sample_material(ZINC_200.into(), &mut standard_materials),
-        Transform::from_xyz(4.0, (mini_plateform_cube_size / 2.0) + 2.0, 8.0),
-    ));
 
-    // spawn a cube with physics and a material
-    let small_plateform_cube_size: f32 = 4.0;
-    commands.spawn((
-        RigidBody::Static,
-        Collider::cuboid(
-            small_plateform_cube_size,
-            small_plateform_cube_size,
-            small_plateform_cube_size,
-        ),
-        Mass(5.0),
-        Mesh3d(meshes.add(Cuboid::from_length(small_plateform_cube_size))),
-        get_sample_material(ZINC_200.into(), &mut standard_materials),
-        Transform::from_xyz(8.0, (small_plateform_cube_size / 2.0) + 2.0, 8.0),
-    ));
+    for i in 0..6 {
+        let size: f32 = 2.0 + (i as f32 * 2.0);
+        let z_offset: f32 = (0..i).map(|j: i32| 2.0 + (j as f32 * 2.0) + 2.0).sum::<f32>() + (size / 2.0);
 
-    // spawn a cube with physics and a material
-    let medium_plateform_cube_size: f32 = 6.0;
-    commands.spawn((
-        RigidBody::Static,
-        Collider::cuboid(
-            medium_plateform_cube_size,
-            medium_plateform_cube_size,
-            medium_plateform_cube_size,
-        ),
-        Mass(5.0),
-        Mesh3d(meshes.add(Cuboid::from_length(medium_plateform_cube_size))),
-        get_sample_material(ZINC_200.into(), &mut standard_materials),
-        Transform::from_xyz(16.0, (medium_plateform_cube_size / 2.0) + 2.0, 8.0),
-    ));
-
-    // spawn a cube with physics and a material
-    let large_plateform_cube_size: f32 = 8.0;
-    commands.spawn((
-        RigidBody::Static,
-        Collider::cuboid(
-            large_plateform_cube_size,
-            large_plateform_cube_size,
-            large_plateform_cube_size,
-        ),
-        Mass(5.0),
-        Mesh3d(meshes.add(Cuboid::from_length(large_plateform_cube_size))),
-        get_sample_material(ZINC_200.into(), &mut standard_materials),
-        Transform::from_xyz(24.0, (large_plateform_cube_size / 2.0) + 2.0, 8.0),
-    ));
+        commands.spawn((
+            RigidBody::Static,
+            Collider::cuboid(size, size, size),
+            Mass(5.0),
+            Mesh3d(meshes.add(Cuboid::from_length(size))),
+            get_sample_material(ZINC_200.into(), &mut materials),
+            Transform::from_xyz(16.0, (size / 2.0) + 2.0, -z_offset),
+        ));
+    }
 }
 
 pub fn get_sample_material(
@@ -208,16 +161,6 @@ pub fn get_sample_material(
         base_color,
         ..default()
     }))
-
-    /*
-           MeshMaterial3d(extended_materials.add(ExtendedMaterial {
-           base: StandardMaterial {
-               base_color: ZINC_200.into(),
-               ..default()
-           },
-           extension: BlockoutMaterialExt::default(),
-       })),
-    */
 }
 
 // Close the focused window whenever the escape key (Esc) is pressed

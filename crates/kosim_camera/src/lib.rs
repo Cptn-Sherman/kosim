@@ -1,4 +1,4 @@
-use avian3d::prelude::TransformInterpolation;
+use avian3d::prelude::{RayCaster, RayHits, TransformInterpolation};
 use bevy::app::{App, FixedUpdate, Plugin, PreStartup, Startup};
 use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::camera::{self, Camera, Camera3d, ClearColor, Exposure};
@@ -13,7 +13,7 @@ use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::light::{AtmosphereEnvironmentMapLight, VolumetricFog};
 use bevy::log::info;
-use bevy::math::Vec3;
+use bevy::math::{Dir3, Vec3};
 use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium};
 use bevy::post_process::bloom::Bloom;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -100,12 +100,14 @@ pub fn create_camera(
             Exposure::SUNLIGHT,
             Bloom::NATURAL,
             AtmosphereEnvironmentMapLight::default(),
-            GameCamera,
             TransformInterpolation,
             DynamicCameraMovement {
                 lean: InterpolatedValue::<Vec3>::new(Vec3::from_array([0.0, 0.0, 0.0]), 2.0),
                 lock_lean: 0.0,
             },
+            RayCaster::new(Vec3::ZERO, Dir3::NEG_Z),
+            RayHits::default(),
+            GameCamera,
         ))
         .insert(VolumetricFog {
             ambient_intensity: 0.0,

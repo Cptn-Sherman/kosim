@@ -45,7 +45,7 @@ use crate::{
         update_debug_movement_vector_decay, update_debug_movement_vector_target,
         update_debug_position, update_debug_rotation,
     },
-    focus::{Focus, camera_look_system},
+    focus::{Focus, apply_target_system, camera_look_system},
     motion::{Motion, TouchedEntities, player_motion_system, player_rotation_system, run_move_and_slide},
     stance::{Stance, StanceType, compute_next_stance},
 };
@@ -90,6 +90,7 @@ impl Plugin for PlayerPlugin {
                 lock_angular_velocity,
                 play_footstep_sfx,
                 tick_footstep,
+                apply_target_system,
             )
                 .chain(),
         );

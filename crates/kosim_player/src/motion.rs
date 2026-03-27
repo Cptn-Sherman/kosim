@@ -4,7 +4,7 @@ use avian3d::{math::{AdjustPrecision, AsF32}, prelude::{
 use bevy::{
     color::palettes::tailwind, ecs::{
         component::Component, entity::{Entity, EntityHashSet}, query::With, system::{Query, Res}
-    }, gizmos::gizmos::Gizmos, input::{ButtonInput, keyboard::KeyCode}, log::{info, trace, warn}, math::{EulerRot, Quat, Vec3}, prelude::{Deref, DerefMut}, time::Time, transform::components::Transform
+    }, gizmos::gizmos::Gizmos, input::{ButtonInput, keyboard::KeyCode}, log::{trace, warn}, math::{EulerRot, Quat, Vec3}, prelude::{Deref, DerefMut}, time::Time, transform::components::Transform
 };
 use kosim_input::input::Input;
 use kosim_utility::{
