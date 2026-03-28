@@ -16,7 +16,6 @@ avian3d = { version = "0.6" }
 bevy_kira_audio = { version = "0.25.0", features = ["wav"] }
 kosim_input = { version = "0.1.0", path = "../kosim_input" }
 kosim_utility = { version = "0.1.0", path = "../kosim_utility" }
-kosim_interface = { version = "0.1.0", path = "../kosim_interface" }
 kosim_camera = { version = "0.1.0", path = "../kosim_camera" }
 bevy_enhanced_input = "0.24.1"
 

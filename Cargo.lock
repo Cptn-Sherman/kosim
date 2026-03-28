@@ -3538,6 +3538,7 @@ name = "kosim_interface"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "kosim_player",
 ]
 
 [[package]]
@@ -3551,7 +3552,6 @@ dependencies = [
  "bevy_turborand",
  "kosim_camera",
  "kosim_input",
- "kosim_interface",
  "kosim_utility",
 ]
 

@@ -2,8 +2,10 @@
 name = "kosim_interface"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
 
 [dependencies]
+kosim_player = { version = "0.1.0", path = "../kosim_player" }
 bevy = { version = "0.18.1", features = [
     "dynamic_linking",
     "file_watcher",

@@ -1,9 +1,25 @@
 use avian3d::prelude::LinearVelocity;
 use bevy::{asset::{AssetServer, Handle}, camera::Camera3d, color::Color, ecs::{component::Component, query::{With, Without}, system::{Commands, Query, Res}}, math::{EulerRot, Quat}, text::{Font, TextColor, TextFont, TextSpan}, transform::components::Transform, ui::{AlignItems, BackgroundColor, BorderColor, Display, FlexDirection, JustifyContent, Node, PositionType, UiRect, Val, widget::Text}, utils::default};
-use kosim_interface::{BORDER_COLOR, DEFAULT_DEBUG_FONT_PATH};
+//use kosim_interface::{BORDER_COLOR, DEFAULT_DEBUG_FONT_PATH};
 use kosim_utility::format_value::{format_value_f32, format_value_quat, format_value_vec3};
 
 use crate::{Player, motion::Motion};
+
+pub const DEFAULT_FONT_PATH: &str = "fonts/AshlanderPixel_fixed.ttf";
+pub const DEFAULT_DEBUG_FONT_PATH: &str = "fonts/Monocraft.ttf";
+pub const DEFAULT_FONT_SIZE: f32 = 14.0;
+
+#[allow(dead_code)]
+pub const ORANGE_TEXT_COLOR: Color = Color::hsv(0.34, 1.0, 0.5);
+#[allow(dead_code)]
+pub const YELLOW_GREEN_TEXT_COLOR: Color = Color::hsv(0.9, 0.69, 0.58);
+#[allow(dead_code)]
+pub const RED_TEXT_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
+#[allow(dead_code)]
+pub const GOLD_TEXT_COLOR: Color = Color::srgb(1.0, 0.72, 0.0);
+pub const BORDER_COLOR: Color = Color::srgb(0.6, 0.6, 0.6);
+pub const HUD_BACKGROUND_COLOR: Color = Color::srgba(0.05, 0.05, 0.05, 0.75);
+
 
 pub fn create_player_debug(mut commands: Commands, asset_server: Res<AssetServer>) {
     let default_font: Handle<Font> = asset_server.load(DEFAULT_DEBUG_FONT_PATH);

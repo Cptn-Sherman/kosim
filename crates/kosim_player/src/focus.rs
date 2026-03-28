@@ -23,6 +23,12 @@ pub struct Focus;
 #[derive(Component)]
 pub struct FocusTarget;
 
+#[derive(Component)]
+pub struct ObjectInformationComponent {
+    pub name: String,
+    pub description: String,
+}
+
 pub const MAX_FREE_LOOK_ANGLE: f32 = 110.0f32.to_radians();
 
 // This function and many of its helpers are ripped from, bevy_fly_cam.
