@@ -6,10 +6,9 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::{With, Without},
-        system::{Query, Res},
+        system::{Commands, Query, Res},
     },
     input::{ButtonInput, keyboard::KeyCode},
-    log::info,
     math::{EulerRot, Quat},
     time::Time,
     transform::components::Transform,
@@ -54,29 +53,60 @@ pub fn camera_look_system(
     }
 }
 
-pub fn apply_target_system(
+
+pub fn update_focus_target(
     focus: Query<(Entity, &RayHits), With<GameCamera>>,
+    previous_focus: Query<Entity, (With<FocusTarget>, Without<GameCamera>)>,
     ignored_entities: Query<Entity, With<IgnoreRayCollision>>,
+    mut commands: Commands,
 ) {
     // Compute the ray_length to a hit, if we don't hit anything we assume the ground is infinitly far away.
     let (entity, ray_hits) = focus.single().unwrap();
     let mut ray_length: f32 = f32::INFINITY;
+    let mut hit_entity: Option<Entity> = None;
 
     for hit in ray_hits.iter_sorted() {
             // First we ensure that the hit is not an ignored entity.
-            for child_entity in ignored_entities {
-                if hit.entity == child_entity {
-                    continue;
+            let mut can_skip: bool = false;
+            for ignorable_entity in ignored_entities {
+                if hit.entity == ignorable_entity {
+                    can_skip = true;
                 }
+            }
+            if can_skip {
+                continue;
             }
             // Next we ensure the hit is not the entity,
             // if true this is the ray_length.
             if hit.entity != entity {
                 ray_length = hit.distance;
+                hit_entity = Some(hit.entity);
                 break;
             }
     }
-    info!("Ray length to focus hit is {}.", ray_length);
 
-    
+    let previous_focus_entity: Option<Entity> = previous_focus.iter().next();
+
+    if ray_length.is_infinite() {
+        // Distance is infinite, remove FocusTarget from previous_focus entity
+        if let Some(prev_entity) = previous_focus_entity {
+            commands.entity(prev_entity).remove::<FocusTarget>();
+        }
+    } else {
+        // We have a hit, check if it's the same as previous_focus
+        if let Some(hit_ent) = hit_entity {
+            if let Some(prev_entity) = previous_focus_entity {
+                if hit_ent == prev_entity {
+                    // Same entity, do nothing.
+                } else {
+                    // Different entities: apply FocusTarget to new hit entity and remove from previous.
+                    commands.entity(hit_ent).insert(FocusTarget);
+                    commands.entity(prev_entity).remove::<FocusTarget>();
+                }
+            } else {
+                // No previous focus, apply FocusTarget to new hit entity.
+                commands.entity(hit_ent).insert(FocusTarget);
+            }
+        }
+    }
 }

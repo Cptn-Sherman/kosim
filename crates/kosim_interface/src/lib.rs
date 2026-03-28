@@ -87,9 +87,6 @@ pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
             Node {
                 width: Val::Px(cursor_size),
                 height: Val::Px(cursor_size),
-                display: Display::Flex,
-                align_items: AlignItems::Center,
-                flex_direction: FlexDirection::Column,
                 ..default()
             },
             ImageNode {
@@ -97,35 +94,36 @@ pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
         ));
-
-        parent
-            .spawn((
-                Node {
-                    display: Display::Flex,
-                    align_items: AlignItems::Center,
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(16.0),
-                    top: Val::Px(16.0),
-                    padding: UiRect::all(Val::Px(8.0)),
-                    border: UiRect::all(Val::Px(2.5)),
-                    ..Default::default()
-                },
-                BackgroundColor(HUD_BACKGROUND_COLOR),
-                BorderColor::all(BORDER_COLOR),
-            ))
-            .with_children(|parent| {
-                parent.spawn(gen_text_section(
-                    Some("Yellow Box".to_string()),
-                    Some(DEFAULT_FONT_SIZE),
-                    None,
-                    default_font.clone(),
-                ));
-                parent.spawn(gen_text_section(
-                    Some("E: Take".to_string()),
-                    Some(10.0),
-                    None,
-                    default_debug_font.clone(),
-                ));
-            });
     });
+
+    // Focus Target UI
+    // cmd.spawn((
+    //     Node {
+    //         width: Val::Percent(100.0),
+    //         height: Val::Percent(100.0),
+    //         display: Display::Flex,
+    //         align_items: AlignItems::Center,
+    //         flex_direction: FlexDirection::Column,
+    //         justify_content: JustifyContent::Center,
+    //         padding: UiRect::all(Val::Px(8.0)),
+    //         border: UiRect::all(Val::Px(2.5)),
+    //         ..Default::default()
+    //     },
+    //     BackgroundColor(HUD_BACKGROUND_COLOR),
+    //     BorderColor::all(BORDER_COLOR),
+    // ))
+    // .with_children(|parent| {
+    //     parent.spawn(gen_text_section(
+    //         Some("Yellow Box".to_string()),
+    //         Some(DEFAULT_FONT_SIZE),
+    //         None,
+    //         default_font.clone(),
+    //     ));
+    //     parent.spawn(gen_text_section(
+    //         Some("E: Take".to_string()),
+    //         Some(10.0),
+    //         None,
+    //         default_debug_font.clone(),
+    //     ));
+    // });
 }

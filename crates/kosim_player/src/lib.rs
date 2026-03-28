@@ -45,7 +45,7 @@ use crate::{
         update_debug_movement_vector_decay, update_debug_movement_vector_target,
         update_debug_position, update_debug_rotation,
     },
-    focus::{Focus, apply_target_system, camera_look_system},
+    focus::{Focus, update_focus_target, camera_look_system},
     motion::{Motion, TouchedEntities, player_motion_system, player_rotation_system, run_move_and_slide},
     stance::{Stance, StanceType, compute_next_stance},
 };
@@ -90,7 +90,7 @@ impl Plugin for PlayerPlugin {
                 lock_angular_velocity,
                 play_footstep_sfx,
                 tick_footstep,
-                apply_target_system,
+                update_focus_target,
             )
                 .chain(),
         );
@@ -145,8 +145,6 @@ pub fn spawn_player(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut collider = Collider::capsule(0.5, 1.0);
-    collider.set_scale(Vec3::from([1.0, 1.0, 1.0]), 10);
 
     commands
         .spawn((
@@ -208,7 +206,7 @@ pub fn spawn_player(
             CustomPositionIntegration,
             TouchedEntities::default(),
             CollidingEntities::default(),
-            collider.clone(),
+            Collider::capsule(0.5, 1.0),
             IgnoreRayCollision,
             Player,
             actions!(Player[(Action::<Crouch>::new(), bindings![KeyCode::ControlLeft, GamepadButton::LeftThumb]),(
