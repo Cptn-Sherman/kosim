@@ -16,8 +16,8 @@ use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween}
 use bevy_turborand::prelude::RngPlugin;
 use kosim_camera::KosimCameraPlugin;
 use kosim_input::{InputConfig, KosimInputPlugin, binding::Bindings, input::Input};
-use kosim_interface::create_sample_hud;
-use kosim_player::PlayerPlugin;
+use kosim_interface::KosimInterfacePlugin;
+use kosim_player::{PlayerPlugin, focus::ObjectInformationComponent};
 use kosim_utility::mesh::generate_plane_mesh;
 
 fn main() {
@@ -35,6 +35,7 @@ fn main() {
             DefaultPlugins,
             KosimInputPlugin,
             KosimCameraPlugin,
+            KosimInterfacePlugin,
             AudioPlugin,
             RngPlugin::new().with_rng_seed(0),
             PhysicsDebugPlugin::default(),
@@ -61,7 +62,7 @@ fn main() {
         ))
         .add_systems(
             Startup,
-            (setup, start_background_audio, create_sample_hud).chain(),
+            (setup, start_background_audio).chain(),
         )
         .add_systems(Update, (close_on_key,))
         .run();
@@ -95,16 +96,15 @@ fn setup(
     .build();
 
     // create the 'Sun' with volumetric Lighting enabled.
-    commands
-        .spawn((
-            DirectionalLight {
-                illuminance: light_consts::lux::RAW_SUNLIGHT,
-                shadows_enabled: true,
-                ..default()
-            },
-            Transform::default().with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_4)),
-            SunDisk::default(),
-        ));
+    commands.spawn((
+        DirectionalLight {
+            illuminance: light_consts::lux::RAW_SUNLIGHT,
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::default().with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_4)),
+        SunDisk::default(),
+    ));
 
     // Plane
     let plane_size: f32 = 128.0;
@@ -134,13 +134,18 @@ fn setup(
             ..default()
         })),
         Transform::from_xyz(2.0, 25.0, 2.0),
-
+        ObjectInformationComponent {
+            name: "Yellow Box".to_string(),
+            description: "A yellow box for testing".to_string(),
+        },
     ));
-
 
     for i in 0..6 {
         let size: f32 = 2.0 + (i as f32 * 2.0);
-        let z_offset: f32 = (0..i).map(|j: i32| 2.0 + (j as f32 * 2.0) + 2.0).sum::<f32>() + (size / 2.0);
+        let z_offset: f32 = (0..i)
+            .map(|j: i32| 2.0 + (j as f32 * 2.0) + 2.0)
+            .sum::<f32>()
+            + (size / 2.0);
 
         commands.spawn((
             RigidBody::Static,

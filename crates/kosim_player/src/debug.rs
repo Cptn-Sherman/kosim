@@ -62,45 +62,45 @@ pub fn create_player_debug(mut commands: Commands, asset_server: Res<AssetServer
                     parent
                         .spawn((
                             Text::new("pos: "),
-                            text_font.clone(),
                             TextColor(Color::WHITE),
+                            text_font.clone(),
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                TextSpan::new("000"),
-                                text_font.clone(),
-                                TextColor(Color::WHITE),
                                 MotionPositionDebug,
+                                TextSpan::new("000"),
+                                TextColor(Color::WHITE),
+                                text_font.clone(),
                             ));
                         });
 
                     parent
                         .spawn((
                             Text::new("focus: "),
-                            text_font.clone(),
                             TextColor(Color::WHITE),
+                            text_font.clone(),
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                TextSpan::new("000"),
-                                text_font.clone(),
-                                TextColor(Color::WHITE),
                                 MotionRotationDebug,
+                                TextSpan::new("000"),
+                                TextColor(Color::WHITE),
+                                text_font.clone(),
                             ));
                         });
 
                     parent
                         .spawn((
                             Text::new("vel: "),
-                            text_font.clone(),
                             TextColor(Color::WHITE),
+                            text_font.clone(),
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                TextSpan::new("000"),
-                                text_font.clone(),
-                                TextColor(Color::WHITE),
                                 MotionVelocityDebug,
+                                TextSpan::new("000"),
+                                TextColor(Color::WHITE),
+                                text_font.clone(),
                             ));
                         });
 
@@ -112,10 +112,10 @@ pub fn create_player_debug(mut commands: Commands, asset_server: Res<AssetServer
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                TextSpan::new("000"),
-                                text_font.clone(),
-                                TextColor(Color::WHITE),
                                 MotionMovementVectorDecayRateDebug,
+                                TextSpan::new("000"),
+                                TextColor(Color::WHITE),
+                                text_font.clone(),
                             ));
                         });
 
