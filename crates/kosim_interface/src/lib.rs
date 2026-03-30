@@ -183,41 +183,53 @@ pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
             height: Val::Percent(45.0),
             display: Display::Flex,
             align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
+            justify_content: JustifyContent::FlexStart,
             flex_direction: FlexDirection::Column,
-            padding: UiRect::all(Val::Px(8.0)),
-            border: UiRect::all(Val::Px(2.5)),
             top: Val::Percent(55.0),
             ..default()
         },
-        BackgroundColor(HUD_BACKGROUND_COLOR),
-        BorderColor::all(BORDER_COLOR),
-        HudObjectInfoRootNode,
-        Visibility::Visible,
     ))
     .with_children(|parent| {
-        parent.spawn((
-            Text::new("Empty"),
-            TextFont {
-                font: default_font.clone(),
-                font_size: DEFAULT_FONT_SIZE,
-                font_smoothing: FontSmoothing::AntiAliased,
-                weight: FontWeight::BOLD,
-                font_features: FontFeatures::default(),
-            },
-            TextColor(Color::WHITE),
-            HudObjectInfoTextNode,
-            Visibility::Inherited,
-        ));
+        parent
+            .spawn((
+                Node {
+                    display: Display::Flex,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(2.5)),
+                    ..default()
+                },
+                BackgroundColor(HUD_BACKGROUND_COLOR),
+                BorderColor::all(BORDER_COLOR),
+                HudObjectInfoRootNode,
+                Visibility::Hidden,
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("NO TARGET".to_string()),
+                    TextFont {
+                        font: default_font.clone(),
+                        font_size: DEFAULT_FONT_SIZE,
+                        font_smoothing: FontSmoothing::AntiAliased,
+                        weight: FontWeight::BOLD,
+                        font_features: FontFeatures::default(),
+                    },
+                    TextColor(Color::WHITE),
+                    HudObjectInfoTextNode,
+                    Visibility::Inherited,
+                ));
 
-        parent.spawn((
-            gen_text_section(
-                Some("E: Take".to_string()),
-                Some(10.0),
-                None,
-                default_debug_font.clone(),
-            ),
-            Visibility::Inherited,
-        ));
+                parent.spawn((
+                    gen_text_section(
+                        Some("E: Take".to_string()),
+                        Some(10.0),
+                        None,
+                        default_debug_font.clone(),
+                    ),
+                    Visibility::Inherited,
+                ));
+            });
     });
 }
