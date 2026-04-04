@@ -1,17 +1,12 @@
 use crate::{Player, body::IgnoreRayCollision};
 use avian3d::prelude::RayHits;
 use bevy::{
-    camera::Camera3d,
-    ecs::{
+    camera::Camera3d, ecs::{
         component::Component,
         entity::Entity,
         query::{With, Without},
         system::{Commands, Query, Res},
-    },
-    input::{ButtonInput, keyboard::KeyCode},
-    math::{EulerRot, Quat},
-    time::Time,
-    transform::components::Transform,
+    }, input::{ButtonInput, keyboard::KeyCode}, math::{EulerRot, Quat}, time::Time, transform::components::Transform
 };
 use kosim_camera::GameCamera;
 use kosim_input::{binding::Bindings, input::Input};
@@ -30,6 +25,7 @@ pub struct ObjectInformationComponent {
 }
 
 pub const MAX_FREE_LOOK_ANGLE: f32 = 110.0f32.to_radians();
+pub const FOCUS_DISTANCE: f32 = 5.0;
 
 // This function and many of its helpers are ripped from, bevy_fly_cam.
 pub fn camera_look_system(
@@ -93,7 +89,7 @@ pub fn update_focus_target(
 
     let previous_focus_entity: Option<Entity> = previous_focus.iter().next();
 
-    if ray_length.is_infinite() {
+    if ray_length.is_infinite() || ray_length > FOCUS_DISTANCE {
         // Distance is infinite, remove FocusTarget from previous_focus entity
         if let Some(prev_entity) = previous_focus_entity {
             commands.entity(prev_entity).remove::<FocusTarget>();

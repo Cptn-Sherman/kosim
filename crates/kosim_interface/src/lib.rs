@@ -1,5 +1,3 @@
-use std::result;
-
 use bevy::{
     app::{App, Plugin, Startup, Update},
     asset::{AssetServer, Handle},
@@ -9,13 +7,12 @@ use bevy::{
         bundle::Bundle,
         component::Component,
         entity::Entity,
-        query::{QuerySingleError, With, Without},
+        query::{QuerySingleError, With},
         system::{Commands, Query, Res},
     },
     image::Image,
     log::info,
-    render::view::visibility,
-    text::{Font, FontFeatures, FontSmoothing, FontWeight, TextColor, TextFont, TextSpan},
+    text::{Font, FontFeatures, FontSmoothing, FontWeight, TextColor, TextFont},
     ui::{
         AlignItems, BackgroundColor, BorderColor, Display, FlexDirection, JustifyContent, Node,
         UiRect, Val,
@@ -26,8 +23,8 @@ use bevy::{
 use kosim_player::focus::{FocusTarget, ObjectInformationComponent};
 
 pub const DEFAULT_FONT_PATH: &str = "fonts/AshlanderPixel_fixed.ttf";
-pub const DEFAULT_DEBUG_FONT_PATH: &str = "fonts/Monocraft.ttf";
-pub const DEFAULT_FONT_SIZE: f32 = 14.0;
+pub const DEFAULT_DEBUG_FONT_PATH: &str = "fonts/mononoki-Bold.ttf";
+pub const DEFAULT_FONT_SIZE: f32 = 18.0;
 
 #[allow(dead_code)]
 pub const ORANGE_TEXT_COLOR: Color = Color::hsv(0.34, 1.0, 0.5);
@@ -35,6 +32,7 @@ pub const ORANGE_TEXT_COLOR: Color = Color::hsv(0.34, 1.0, 0.5);
 pub const YELLOW_GREEN_TEXT_COLOR: Color = Color::hsv(0.9, 0.69, 0.58);
 #[allow(dead_code)]
 pub const RED_TEXT_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
+pub const GREY_TEXT_COLOR: Color = Color::srgb(0.8, 0.8, 0.8);
 #[allow(dead_code)]
 pub const GOLD_TEXT_COLOR: Color = Color::srgb(1.0, 0.72, 0.0);
 pub const BORDER_COLOR: Color = Color::srgb(0.6, 0.6, 0.6);
@@ -129,12 +127,12 @@ pub fn update_focus_target_hud(
             result
         }
         Err(QuerySingleError::NoEntities(_)) => {
-            info!("No focus target, hiding HUD.");
+            // info!("No focus target, hiding HUD.");
             *visibility = Visibility::Hidden;
             return;
         }
         Err(QuerySingleError::MultipleEntities(_)) => {
-            info!("Multiple focus targets found, cannot determine which to display.");
+            // info!("Multiple focus targets found, cannot determine which to display.");
             *visibility = Visibility::Hidden;
             return;
         }
@@ -177,59 +175,82 @@ pub fn create_sample_hud(mut cmd: Commands, asset_server: Res<AssetServer>) {
     });
 
     // Focus Target UI
-    cmd.spawn((
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(45.0),
-            display: Display::Flex,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::FlexStart,
-            flex_direction: FlexDirection::Column,
-            top: Val::Percent(55.0),
-            ..default()
-        },
-    ))
-    .with_children(|parent| {
-        parent
-            .spawn((
-                Node {
-                    display: Display::Flex,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(8.0)),
-                    border: UiRect::all(Val::Px(2.5)),
-                    ..default()
-                },
-                BackgroundColor(HUD_BACKGROUND_COLOR),
-                BorderColor::all(BORDER_COLOR),
-                HudObjectInfoRootNode,
-                Visibility::Hidden,
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    Text::new("NO TARGET".to_string()),
-                    TextFont {
-                        font: default_font.clone(),
-                        font_size: DEFAULT_FONT_SIZE,
-                        font_smoothing: FontSmoothing::AntiAliased,
-                        weight: FontWeight::BOLD,
-                        font_features: FontFeatures::default(),
+    cmd.spawn((Node {
+        width: Val::Percent(100.0),
+        height: Val::Percent(45.0),
+        display: Display::Flex,
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::FlexStart,
+        flex_direction: FlexDirection::Column,
+        top: Val::Percent(55.0),
+        ..default()
+    },))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        display: Display::Flex,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(2.0),
+                        padding: UiRect {
+                            left: Val::Px(12.0),
+                            right: Val::Px(12.0),
+                            top: Val::Px(8.0),
+                            bottom: Val::Px(8.0),
+                        },
+                        border: UiRect::all(Val::Px(2.5)),
+                        ..default()
                     },
-                    TextColor(Color::WHITE),
-                    HudObjectInfoTextNode,
-                    Visibility::Inherited,
-                ));
+                    BackgroundColor(HUD_BACKGROUND_COLOR),
+                    BorderColor::all(BORDER_COLOR),
+                    HudObjectInfoRootNode,
+                    Visibility::Hidden,
+                ))
+                .with_children(|parent| {
+                    // -- COMMAND PROMPT SEGMENT --
+                    parent.spawn((
+                        Text::new("E: Take".to_string()),
+                        TextFont {
+                            font: default_font.clone(),
+                            font_size: 14.0,
+                            font_smoothing: FontSmoothing::AntiAliased,
+                            weight: FontWeight::BOLD,
+                            font_features: FontFeatures::default(),
+                        },
+                        TextColor(GOLD_TEXT_COLOR),
+                        Visibility::Inherited,
+                    ));
 
-                parent.spawn((
-                    gen_text_section(
-                        Some("E: Take".to_string()),
-                        Some(10.0),
-                        None,
-                        default_debug_font.clone(),
-                    ),
-                    Visibility::Inherited,
-                ));
-            });
-    });
+                    // -- TARGET NAME SEGMENT --
+                    parent.spawn((
+                        Text::new("NO TARGET".to_string()),
+                        TextFont {
+                            font: default_font.clone(),
+                            font_size: DEFAULT_FONT_SIZE,
+                            font_smoothing: FontSmoothing::AntiAliased,
+                            weight: FontWeight::BOLD,
+                            font_features: FontFeatures::default(),
+                        },
+                        TextColor(Color::WHITE),
+                        HudObjectInfoTextNode,
+                        Visibility::Inherited,
+                    ));
+
+                    // -- TARGET INFO SEGMENT --
+                    parent.spawn((
+                        Text::new("3.1 Kg".to_string()),
+                        TextFont {
+                            font: default_font.clone(),
+                            font_size: 14.0,
+                            font_smoothing: FontSmoothing::AntiAliased,
+                            weight: FontWeight::BOLD,
+                            font_features: FontFeatures::default(),
+                        },
+                        TextColor(GREY_TEXT_COLOR),
+                        Visibility::Inherited,
+                    ));
+                });
+        });
 }
