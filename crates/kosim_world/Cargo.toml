@@ -1,0 +1,15 @@
+[package]
+name = "kosim_world"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+bevy = { version = "0.18.1", features = [
+    "dynamic_linking",
+    "file_watcher",
+    "embedded_watcher",
+    "bevy_dev_tools",
+] }
+avian3d = { version = "0.6" }
+noise = "0.9"

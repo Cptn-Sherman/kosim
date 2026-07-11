@@ -10,6 +10,7 @@ kosim_input = { version = "0.1.0", path = "crates/kosim_input" }
 kosim_player = { version = "0.1.0", path = "crates/kosim_player" }
 kosim_utility = { version = "0.1.0", path = "crates/kosim_utility" }
 kosim_interface = { version = "0.1.0", path = "crates/kosim_interface" }
+kosim_world = { version = "0.1.0", path = "crates/kosim_world" }
 bevy = { version = "0.18.1", features = [
     "dynamic_linking",
     "file_watcher",
@@ -25,7 +26,7 @@ bevy_enhanced_input = "0.24.1"
 
 [workspace]
 resolver = "2"                                               # Important! wgpu/Bevy needs this!
-members = ["crates/kosim_interface", "crates/kosim_terrain"]
+members = ["crates/kosim_interface", "crates/kosim_terrain", "crates/kosim_world"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

@@ -19,6 +19,7 @@ use kosim_input::{InputConfig, KosimInputPlugin, binding::Bindings, input::Input
 use kosim_interface::KosimInterfacePlugin;
 use kosim_player::{PlayerPlugin, focus::ObjectInformationComponent};
 use kosim_utility::mesh::generate_plane_mesh;
+use kosim_world::KosimWorldPlugin;
 
 fn main() {
     App::new()
@@ -41,6 +42,7 @@ fn main() {
             PhysicsDebugPlugin::default(),
             PhysicsPlugins::default(),
             PlayerPlugin,
+            KosimWorldPlugin,
             FpsOverlayPlugin {
                 config: FpsOverlayConfig {
                     enabled: true,
@@ -107,7 +109,7 @@ fn setup(
     ));
 
     // Plane
-    let plane_size: f32 = 128.0;
+    let plane_size: f32 = 2.0;
     let plane_thickness: f32 = 0.005;
 
     commands.spawn((
