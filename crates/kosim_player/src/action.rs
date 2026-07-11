@@ -1,5 +1,5 @@
 use avian3d::prelude::{
-    Collider, ConstantForce, Forces, RayHits, WriteRigidBodyForces, forces::ForcesItem,
+    Collider, ConstantForce, Forces, ShapeHits, WriteRigidBodyForces, forces::ForcesItem,
 };
 use bevy::{
     ecs::{
@@ -34,7 +34,7 @@ pub fn detect_action_jumping(
             &Motion,
             &mut Stance,
             &Body,
-            &RayHits,
+            &ShapeHits,
         ),
         With<Player>,
     >,

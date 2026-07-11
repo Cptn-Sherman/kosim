@@ -224,6 +224,8 @@ pub fn run_move_and_slide(
             &mut LinearVelocity,
             &mut TouchedEntities,
             &Collider,
+            &Stance,
+            &Motion,
         ),
         With<Player>,
     >,
@@ -231,7 +233,7 @@ pub fn run_move_and_slide(
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
-    for (entity, mut transform, mut lin_vel, mut touched, collider) in &mut query {
+    for (entity, mut transform, mut lin_vel, mut touched, collider, stance, motion) in &mut query {
         touched.clear();
         // Perform move and slide
         let MoveAndSlideOutput {
@@ -264,8 +266,31 @@ pub fn run_move_and_slide(
             },
         );
 
-        // Update transform and velocity
+        // Update transform.
         transform.translation = position.f32();
-        lin_vel.0 = projected_velocity;
+
+        // * GROUND FRICTION -
+        //
+        // `move_and_slide` projects the incoming velocity ALONG the contact
+        // surface. On a tilted voxel face that projection redirects the vertical
+        // ride-spring / landing velocity into a horizontal downhill component,
+        // so writing `projected_velocity` back verbatim makes the character
+        // creep (and, before the spring was damped, orbit) down every slope even
+        // when the player isn't moving. Nothing else removes that component.
+        //
+        // Emulate static ground friction: while grounded (Standing/Landing) and
+        // not moving under the player's own input, drop the horizontal part of
+        // the projected velocity so the character comes to rest on slopes. The
+        // vertical component is kept so the ride spring still settles the body to
+        // its ride height. When the player IS moving we leave the projection
+        // intact so they travel along the slope surface as intended.
+        let grounded: bool =
+            matches!(stance.current, StanceType::Standing | StanceType::Landing);
+        let mut resolved_velocity = projected_velocity;
+        if grounded && !motion.moving {
+            resolved_velocity.x = 0.0;
+            resolved_velocity.z = 0.0;
+        }
+        lin_vel.0 = resolved_velocity;
     }
 }

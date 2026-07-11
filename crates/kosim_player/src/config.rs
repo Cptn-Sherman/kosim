@@ -7,6 +7,10 @@ pub struct PlayerControlConfig {
     pub ride_height: f32,
     pub ride_height_step_offset: f32, // this is the amount we add when a step is taken to simulate head bob.
     pub ray_length_offset: f32,
+    /// Extra distance the ground probe must clear *beyond* the ride band before a
+    /// grounded player is considered airborne. Prevents Standing<->Airborne
+    /// chatter when the body rests near the band edge on (noisy) voxel ground.
+    pub stance_ground_hysteresis: f32,
     pub ride_spring_strength: f32,
     pub ride_spring_damper: f32,
     pub stance_lockout: f32,
@@ -27,8 +31,9 @@ impl Default for PlayerControlConfig {
             ride_height: 1.5,
             ride_height_step_offset: 0.15,
             ray_length_offset: 0.15,
+            stance_ground_hysteresis: 0.15,
             ride_spring_strength: 3500.0,
-            ride_spring_damper: 300.0,
+            ride_spring_damper: 550.0,
             stance_lockout: 0.5,
             jump_strength: 250.0,
             default_movement_speed: 10.0,

@@ -15,7 +15,7 @@ use bevy::{
     },
     input::{gamepad::GamepadButton, keyboard::KeyCode},
     log::{info, warn},
-    math::{Dir3, Vec3, primitives::Sphere},
+    math::{Dir3, Quat, Vec3, primitives::Sphere},
     mesh::{Mesh, Mesh3d, Meshable},
     pbr::{MeshMaterial3d, StandardMaterial},
     transform::components::Transform,
@@ -34,7 +34,7 @@ use crate::{
         play_footstep_sfx, tick_footstep,
     },
     body::{
-        Body, IgnoreRayCollision, StandingSpringForce,
+        Body, GROUND_PROBE_RADIUS, IgnoreRayCollision, StandingSpringForce,
         apply_standing_spring_force, lock_angular_velocity,
     },
     config::PlayerControlConfig,
@@ -124,8 +124,8 @@ pub struct PlayerBundle {
     constant_force: ConstantForce,
     linear_velocity: LinearVelocity,
     impulse_force: ConstantLinearAcceleration,
-    downward_ray: RayCaster,
-    ray_hits: RayHits,
+    ground_caster: ShapeCaster,
+    ground_hits: ShapeHits,
     body: Body,
     motion: Motion,
     focus: Focus,
@@ -154,8 +154,18 @@ pub fn spawn_player(
                 impulse_force: ConstantLinearAcceleration::new(0.0, 0.0, 0.0),
                 gravity_scale: GravityScale(1.0),
                 transform: Transform::from_xyz(0.0, 16.0, 0.0),
-                downward_ray: RayCaster::new(Vec3::ZERO, Dir3::NEG_Y),
-                ray_hits: RayHits::default(),
+                // Probe the ground with a sphere the width of the capsule instead
+                // of a thin ray, so the body floats clear of the tallest surface
+                // under its whole footprint (see `GROUND_PROBE_RADIUS`). Defaults
+                // are max_hits = 1 and ignore_self = true, so this returns just
+                // the closest ground hit below the player.
+                ground_caster: ShapeCaster::new(
+                    Collider::sphere(GROUND_PROBE_RADIUS),
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                    Dir3::NEG_Y,
+                ),
+                ground_hits: ShapeHits::default(),
                 rigid_body: RigidBody::Dynamic,
                 locked_axes: LockedAxes::new()
                     .lock_rotation_z()

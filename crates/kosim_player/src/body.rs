@@ -46,16 +46,27 @@ pub struct StandingSpringForce {
 #[derive(Component)]
 pub struct IgnoreRayCollision;
 
+/// Radius of the sphere used to probe the ground beneath the player.
+///
+/// This matches the player capsule radius so the probe samples the same
+/// footprint the capsule occupies. Probing with a thin ray instead lets the body
+/// float based on a single point directly below its origin, which on uneven
+/// (e.g. voxel) terrain leaves the capsule intersecting taller neighbouring
+/// geometry — `move_and_slide` then depenetrates it sideways and the character
+/// zips around. A shape cast reports the nearest ground under the whole
+/// footprint, so the spring floats the capsule clear of every surface below it.
+pub const GROUND_PROBE_RADIUS: f32 = 0.5;
+
 pub fn compute_ray_length(
     entity: Entity,
     entities_to_ignore: Query<Entity, With<IgnoreRayCollision>>,
-    ray_hits: &RayHits,
+    shape_hits: &ShapeHits,
 ) -> f32 {
     // Compute the ray_length to a hit, if we don't hit anything we assume the ground is infinitly far away.
     let mut ray_length: f32 = f32::INFINITY;
 
-    // Find the first ray hit which is not its own collider.
-    for hit in ray_hits.iter_sorted() {
+    // Find the first hit which is not its own collider.
+    for hit in shape_hits.iter_sorted() {
         // First we ensure that the hit is not an ignored entity.
         let mut can_skip: bool = false;
         for child_entity in entities_to_ignore {
@@ -69,7 +80,11 @@ pub fn compute_ray_length(
         // Next we ensure the hit is not the entity,
         // if true this is the ray_length.
         if hit.entity != entity {
-            ray_length = hit.distance;
+            // A shape cast reports how far the sphere centre travelled before
+            // contact; add the probe radius so this matches the origin->ground
+            // distance the spring is tuned around (identical to the old thin-ray
+            // value on flat ground).
+            ray_length = hit.distance + GROUND_PROBE_RADIUS;
             break;
         }
     }
@@ -83,7 +98,7 @@ pub fn apply_standing_spring_force(
         &mut ConstantForce,
         &mut StandingSpringForce,
         &mut GravityScale,
-        &RayHits,
+        &ShapeHits,
     )>,
     config: Res<PlayerControlConfig>,
     ignored_entities: Query<Entity, With<IgnoreRayCollision>>,

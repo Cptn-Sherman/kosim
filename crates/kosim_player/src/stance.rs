@@ -1,4 +1,4 @@
-use avian3d::prelude::RayHits;
+use avian3d::prelude::ShapeHits;
 use bevy::{
     ecs::{
         component::Component,
@@ -60,7 +60,7 @@ impl SetWithLockout for Stance {
 }
 
 pub fn compute_next_stance(
-    mut query: Query<(Entity, &StandingSpringForce, &mut Stance, &RayHits), With<Player>>,
+    mut query: Query<(Entity, &StandingSpringForce, &mut Stance, &ShapeHits), With<Player>>,
     ignored_entities: Query<Entity, With<IgnoreRayCollision>>,
     mut ev_footstep: MessageWriter<FootstepEvent>,
     config: Res<PlayerControlConfig>,
@@ -82,15 +82,35 @@ pub fn compute_next_stance(
 
         // If your locked in you cannot change state.
         if stance.lockout_timer <= 0.0 {
-            if ray_length > standing_spring_height.length.current + config.ray_length_offset {
+            let ride_height: f32 = standing_spring_height.length.current;
+            // Top of the ride band: within this the ride spring is engaged and the
+            // body is grounded. Add hysteresis on top so a body already grounded
+            // must clear the band by an extra margin before we call it airborne —
+            // without it, a body resting near the band edge (or a noisy voxel
+            // ground probe) chatters Standing<->Airborne.
+            let ground_band: f32 = ride_height + config.ray_length_offset;
+            let airborne_threshold: f32 = if previous_stance == StanceType::Airborne {
+                // Already airborne: re-ground the instant the probe re-enters the band.
+                ground_band
+            } else {
+                ground_band + config.stance_ground_hysteresis
+            };
+
+            if ray_length > airborne_threshold {
                 next_stance = StanceType::Airborne;
-            } else if ray_length < standing_spring_height.length.current {
-                next_stance = StanceType::Standing;
-            } else if previous_stance != StanceType::Standing
-                && ray_length
-                    < standing_spring_height.length.current + standing_spring_height.extension
-            {
+            } else if previous_stance == StanceType::Airborne {
+                // First frame back in contact after being airborne: a one-shot
+                // touchdown transient that fires the landing sound below and then
+                // settles to Standing next frame.
                 next_stance = StanceType::Landing;
+            } else {
+                // Within the grounded band and already grounded (Standing, or the
+                // one-frame Landing transient): settle to Standing. Requiring
+                // ray_length < ride_height here previously trapped the body in
+                // Landing forever, because the (over)damped ride spring settles AT
+                // ride_height and never dips below it -> the player kept using
+                // airborne movement and felt stuck in the air.
+                next_stance = StanceType::Standing;
             }
         } else if stance.lockout_timer != 0.0 {
             stance.lockout_timer -= time.delta_secs();
