@@ -156,6 +156,8 @@ pub struct TerrainChunk(pub lod::ChunkKey);
 #[derive(Resource)]
 pub struct ChunkManager {
     world: Arc<VoxelWorld>,
+    /// The terrain texture array (one procedural layer per material).
+    terrain_array: Handle<Image>,
     /// Chunks currently wanted and spawned, by key.
     active: HashMap<lod::ChunkKey, Entity>,
     /// Chunks whose mesh is being built off-thread.
@@ -183,7 +185,11 @@ impl Plugin for KosimWorldPlugin {
     }
 }
 
-fn setup_world(mut commands: Commands, config: Res<WorldConfig>) {
+fn setup_world(
+    mut commands: Commands,
+    config: Res<WorldConfig>,
+    mut images: ResMut<Assets<Image>>,
+) {
     let world = VoxelWorld::generate(config.clone());
     info!(
         "kosim_world: generated {dim}^3 voxel world ({size} units, {mvs}-unit voxels)",
@@ -191,6 +197,8 @@ fn setup_world(mut commands: Commands, config: Res<WorldConfig>) {
         size = world.dim as f32 * config.min_voxel_size,
         mvs = config.min_voxel_size,
     );
+
+    let terrain_array = images.add(fade::build_terrain_texture_array());
 
     // Static collider from the *full-resolution* isosurface (independent of the
     // visual LOD, so physics is consistent everywhere). Built from the same welded
@@ -218,6 +226,7 @@ fn setup_world(mut commands: Commands, config: Res<WorldConfig>) {
 
     commands.insert_resource(ChunkManager {
         world: Arc::new(world),
+        terrain_array,
         active: HashMap::new(),
         pending: HashMap::new(),
         retiring: HashMap::new(),
@@ -328,7 +337,10 @@ fn apply_finished_chunks(
                 metallic: 0.0,
                 ..default()
             },
-            extension: ChunkFade { fade: 0.0 },
+            extension: ChunkFade {
+                fade: 0.0,
+                array: Some(manager.terrain_array.clone()),
+            },
         });
         let entity = commands
             .spawn((

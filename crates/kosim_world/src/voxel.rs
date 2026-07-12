@@ -18,7 +18,27 @@ pub enum VoxelMaterial {
     Snow,
 }
 
+/// Number of distinct voxel materials — the layer count of the terrain texture array.
+pub const MATERIAL_COUNT: u32 = 5;
+
 impl VoxelMaterial {
+    /// Layer index of this material in the terrain texture array (`0..MATERIAL_COUNT`).
+    /// Must match the order textures are packed in `fade::build_terrain_texture_array`.
+    pub fn layer(self) -> u32 {
+        self as u32
+    }
+
+    /// Every material in layer order.
+    pub fn all() -> [VoxelMaterial; MATERIAL_COUNT as usize] {
+        [
+            VoxelMaterial::Stone,
+            VoxelMaterial::Dirt,
+            VoxelMaterial::Grass,
+            VoxelMaterial::Sand,
+            VoxelMaterial::Snow,
+        ]
+    }
+
     /// The base sRGB colour for this material.
     pub fn srgb(self) -> Color {
         match self {

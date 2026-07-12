@@ -513,6 +513,8 @@ fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>) -
         .map(|p| field_normal(world, Vec3::from_array(*p)))
         .collect();
 
+    // The vertex colour carries the material's texture-array layer index in its red
+    // channel (unclamped float); the chunk shader reads it back to pick a texture.
     let colors: Vec<[f32; 4]> = positions
         .iter()
         .zip(normals.iter())
@@ -523,14 +525,15 @@ fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>) -
                 p[1] - n[1] * mvs * 0.5 - origin.y,
                 p[2] - n[2] * mvs * 0.5 - origin.z,
             ) / mvs;
-            world
+            let layer = world
                 .voxel_material(
                     inside.x.floor() as i64,
                     inside.y.floor() as i64,
                     inside.z.floor() as i64,
                 )
-                .map(|m| m.linear_rgba())
-                .unwrap_or_else(|| crate::voxel::VoxelMaterial::Stone.linear_rgba())
+                .unwrap_or(crate::voxel::VoxelMaterial::Stone)
+                .layer();
+            [layer as f32, 0.0, 0.0, 1.0]
         })
         .collect();
 
