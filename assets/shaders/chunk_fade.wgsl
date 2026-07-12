@@ -1,23 +1,61 @@
-// Terrain chunk shader: triplanar texture-array shading + screen-door LOD crossfade.
+// Terrain chunk shader: triplanar texture-array shading, geomorphing LOD, and a
+// screen-door crossfade.
 //
-// Extends StandardMaterial. Each vertex's material (its texture-array layer) is
-// carried in the red vertex-colour channel. The isosurface has no UVs, so the layer
-// is sampled triplanar from world position. A per-chunk `fade` value drives an
-// ordered-dither discard so LOD chunks cross-dissolve without popping.
+// Extends StandardMaterial. Per-vertex terrain data travels in the vertex colour
+// (the isosurface has no UVs): `r` = texture-array layer, `gba` = the geomorph
+// displacement vector to the parent-LOD surface (already edge-pinned at chunk faces
+// so Transvoxel stitching stays watertight). The vertex stage slides each vertex
+// onto the parent-LOD surface by the chunk's morph factor, so a chunk being swapped
+// for its parent (or vice versa) shows identical geometry — the LOD pop becomes a
+// continuous slide. The factor is a CPU-computed per-chunk uniform (not a per-pixel
+// view distance) so the shadow prepass (`chunk_prepass.wgsl`) — whose `view` is the
+// light, not the camera — displaces identically. The fragment stage
+// triplanar-samples the layer and applies a per-chunk ordered-dither fade so
+// streamed chunks cross-dissolve.
+//
+// chunk_params: x = dither fade (0..1), y = geomorph factor (0 full detail →
+// 1 parent surface), z/w = unused.
 
 #import bevy_pbr::{
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing, alpha_discard},
-    forward_io::{VertexOutput, FragmentOutput},
+    forward_io::{Vertex, VertexOutput, FragmentOutput},
+    mesh_functions,
+    view_transformations::position_world_to_clip,
 }
 
-struct ChunkFade {
-    fade: f32,
-}
-
-@group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> chunk_fade: ChunkFade;
+@group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> chunk_params: vec4<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(101) var terrain_tex: texture_2d_array<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(102) var terrain_sampler: sampler;
+
+@vertex
+fn vertex(vertex: Vertex) -> VertexOutput {
+    var out: VertexOutput;
+
+    let world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
+    out.world_normal = mesh_functions::mesh_normal_local_to_world(
+        vertex.normal,
+        vertex.instance_index,
+    );
+    var world_position = mesh_functions::mesh_position_local_to_world(
+        world_from_local,
+        vec4<f32>(vertex.position, 1.0),
+    );
+
+    // Geomorph: slide toward the parent-LOD surface by the chunk's morph factor.
+    world_position = vec4<f32>(
+        world_position.xyz + vertex.color.yzw * chunk_params.y,
+        1.0,
+    );
+
+    out.world_position = world_position;
+    out.position = position_world_to_clip(world_position.xyz);
+    out.color = vertex.color;
+#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
+    out.instance_index = vertex.instance_index;
+#endif
+    return out;
+}
 
 // UV scale: the 32x32 texture repeats every 1/scale world units. 1.0 = one 32x32
 // tile per unit.
@@ -53,7 +91,7 @@ fn fragment(
     @builtin(front_facing) is_front: bool,
 ) -> FragmentOutput {
     // Screen-door fade: drop pixels the current fade level hasn't "reached" yet.
-    if chunk_fade.fade < dither_threshold(in.position.xy) {
+    if chunk_params.x < dither_threshold(in.position.xy) {
         discard;
     }
 

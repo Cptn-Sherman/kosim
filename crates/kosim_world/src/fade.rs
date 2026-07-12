@@ -16,6 +16,7 @@ use bevy::asset::{Asset, Handle, RenderAssetUsages};
 use bevy::color::ColorToComponents;
 use bevy::ecs::component::Component;
 use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
+use bevy::math::Vec4;
 use bevy::pbr::{ExtendedMaterial, MaterialExtension, StandardMaterial};
 use bevy::reflect::Reflect;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
@@ -32,31 +33,59 @@ pub const TEXTURE_SIZE: u32 = 32;
 
 /// Time in seconds for a new chunk to fully dither in.
 pub const FADE_SECONDS: f32 = 0.4;
-/// How long a replaced chunk stays (opaque, as a backing) before despawning. Kept
-/// just above [`FADE_SECONDS`] so replacements are solid before it is removed, while
-/// not piling up too many backing chunks during fast camera movement.
+/// How long a replaced chunk stays (opaque, as a backing) before dissolving. Kept
+/// just above [`FADE_SECONDS`] so replacements are solid before it starts to go,
+/// while not piling up too many backing chunks during fast camera movement.
 pub const RETIRE_SECONDS: f32 = 0.5;
+/// After the backing period, the retiring chunk dithers *out* over this long. Its
+/// replacement is fully opaque underneath by then, so any residual geometric
+/// mismatch (geomorph target vs the true parent mesh, pinned border rings) resolves
+/// pixel-by-pixel instead of popping on the despawn frame.
+pub const DISSOLVE_SECONDS: f32 = 0.3;
 
-/// StandardMaterial extension: the terrain texture array plus the per-chunk fade.
+/// StandardMaterial extension: the terrain texture array plus per-chunk parameters.
+///
+/// `params` packs the per-chunk uniforms:
+/// - `x`: dither fade (0 transparent → 1 opaque),
+/// - `y`: geomorph factor (0 full detail → 1 parent-LOD surface), computed on the
+///   CPU from camera distance (see [`crate::lod::morph_factor`]) so the render and
+///   shadow passes displace vertices identically.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
 pub struct ChunkFade {
     #[uniform(100)]
-    pub fade: f32,
+    pub params: Vec4,
     #[texture(101, dimension = "2d_array")]
     #[sampler(102)]
     pub array: Option<Handle<Image>>,
 }
 
 impl MaterialExtension for ChunkFade {
+    fn vertex_shader() -> ShaderRef {
+        "shaders/chunk_fade.wgsl".into()
+    }
+
     fn fragment_shader() -> ShaderRef {
         "shaders/chunk_fade.wgsl".into()
+    }
+
+    /// Shadow maps (and any depth/normal prepass) must displace vertices exactly
+    /// like the main pass, or shadows swim against the morphing terrain.
+    fn prepass_vertex_shader() -> ShaderRef {
+        "shaders/chunk_prepass.wgsl".into()
+    }
+
+    /// Dither-discard in the shadow pass too, so a chunk's shadow crossfades in
+    /// lockstep with its visible surface (requires the base material to be
+    /// `AlphaMode::Mask`, or shadow pipelines skip fragment shaders entirely).
+    fn prepass_fragment_shader() -> ShaderRef {
+        "shaders/chunk_prepass.wgsl".into()
     }
 }
 
 /// Per-chunk fade state. A fresh chunk dithers in (`value` 0 → 1). When replaced it
 /// becomes `retiring`: it snaps to fully opaque and stays as a solid backing (so the
 /// incoming chunk's dither holes reveal it, not the background) until `timer` reaches
-/// [`RETIRE_SECONDS`], then it despawns.
+/// [`RETIRE_SECONDS`], then dithers back out over [`DISSOLVE_SECONDS`] and despawns.
 #[derive(Component)]
 pub struct Fade {
     pub value: f32,

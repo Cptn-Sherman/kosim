@@ -11,19 +11,18 @@
 //! [`generation`]).
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use avian3d::prelude::{Collider, RigidBody};
-use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
+use bevy::tasks::{AsyncComputeTaskPool, Task, TaskPool, TaskPoolBuilder, block_on, futures_lite::future};
 
 pub mod fade;
 pub mod generation;
 pub mod lod;
 pub mod voxel;
 
-use fade::{ChunkFade, ChunkMaterial, FADE_SECONDS, Fade, RETIRE_SECONDS};
+use fade::{ChunkFade, ChunkMaterial, DISSOLVE_SECONDS, FADE_SECONDS, Fade, RETIRE_SECONDS};
 use voxel::VoxelMaterial;
 
 /// Default edge length of the smallest voxel, in world units.
@@ -64,10 +63,10 @@ impl Default for WorldConfig {
             // (0, 0, 0). A 2048-voxel cube at 0.5 units spans [-512, 512]; the planet
             // radius is 0.42 * 2048 * 0.5 ≈ 430 units, so its surface reaches ~y=430.
             origin: Vec3::new(-512.0, -512.0, -512.0),
-            // Higher = LOD coarsens sooner (closer). At 0.5 the finest chunks
-            // (8-unit) are used within ~32 units and terrain steps down through
-            // coarser steps beyond that, so LOD is visible across the 128-unit world.
-            lod_threshold: 0.5,
+            // A region subdivides while `world_size / dist > lod_threshold`, so the
+            // finest chunks (8-unit) reach out to ~16/threshold units. Lower = finest
+            // detail extends farther (at the cost of more chunks/colliders).
+            lod_threshold: 0.25,
             // Rebuild the LOD mesh only after the camera moves this far, to bound
             // how often the (whole-world) remesh runs.
             rebuild_distance: 4.0,
@@ -110,6 +109,34 @@ impl VoxelWorld {
     pub fn voxel_material(&self, x: i64, y: i64, z: i64) -> Option<VoxelMaterial> {
         self.generator.material_at_voxel(x, y, z)
     }
+
+    /// Might the voxel region `[region_min, region_min + size)` contain any surface?
+    /// Used to prune empty air / solid-interior regions from the LOD walk.
+    #[inline]
+    pub fn region_has_surface(&self, region_min: IVec3, size: i64) -> bool {
+        self.generator
+            .region_has_surface(region_min.x as i64, region_min.y as i64, region_min.z as i64, size)
+    }
+}
+
+/// Dedicated task pool for chunk meshing. Meshing must NOT share Bevy's
+/// `AsyncComputeTaskPool`: avian spawns its collider-tree optimization there each
+/// physics step and *blocks* on it at the end of the step — a wave of queued mesh
+/// jobs in front of it stalled the main thread for tens of milliseconds (the
+/// movement lag spikes). A separate pool keeps the two workloads from queueing
+/// behind each other.
+fn mesh_pool() -> &'static TaskPool {
+    static POOL: OnceLock<TaskPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let threads = std::thread::available_parallelism()
+            .map(|n| n.get().saturating_sub(2))
+            .unwrap_or(2)
+            .clamp(1, 8);
+        TaskPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name("kosim-mesh".to_string())
+            .build()
+    })
 }
 
 /// Marks a rendered leaf-chunk entity with the chunk it represents.
@@ -129,12 +156,31 @@ pub struct ChunkManager {
     terrain_array: Handle<Image>,
     /// Chunks currently wanted and spawned, by key.
     active: HashMap<lod::ChunkKey, Entity>,
-    /// Chunks whose mesh is being built off-thread.
-    pending: HashMap<lod::ChunkKey, Task<Mesh>>,
+    /// Chunks whose mesh (and, for finest chunks, collider) is being built off-thread.
+    pending: HashMap<lod::ChunkKey, Task<(Mesh, Option<Collider>)>>,
     /// Chunks that have left the desired set and are dissolving out before despawn.
     retiring: HashMap<lod::ChunkKey, Entity>,
+    /// Chunks that meshed to nothing (air / solid interior). Cached so they are never
+    /// re-meshed or spawned as (invisible) entities — on a planet most chunks are
+    /// empty, and rendering them was the bulk of the draw calls.
+    empty: HashSet<lod::ChunkKey>,
+    /// Colliders waiting to be attached to their (already spawned) chunk entities.
+    /// Registering a static trimesh in the physics world is main-thread work that
+    /// spikes badly in bulk, so they are drained a few per frame (see
+    /// [`attach_queued_colliders`]).
+    collider_queue: Vec<(Entity, Vec3, Collider)>,
+    /// The desired-set computation runs off the main thread (it walks/balances the
+    /// whole LOD tree). At most one is in flight; its result is diffed when ready.
+    desired_task: Option<Task<Vec<lod::ChunkKey>>>,
     /// Camera position the desired set was last computed for.
     last_camera_pos: Vec3,
+}
+
+impl ChunkManager {
+    /// Read access to the streamed voxel world (e.g. for probing terrain height).
+    pub fn world(&self) -> &VoxelWorld {
+        &self.world
+    }
 }
 
 /// Registers the voxel world: generates the sample scene and full-resolution static
@@ -149,7 +195,14 @@ impl Plugin for KosimWorldPlugin {
             .add_systems(Startup, setup_world)
             .add_systems(
                 Update,
-                (schedule_chunk_meshing, apply_finished_chunks, animate_fades).chain(),
+                (
+                    schedule_chunk_meshing,
+                    apply_finished_chunks,
+                    attach_queued_colliders,
+                    update_morph_factors,
+                    animate_fades,
+                )
+                    .chain(),
             );
     }
 }
@@ -180,6 +233,9 @@ fn setup_world(
         active: HashMap::new(),
         pending: HashMap::new(),
         retiring: HashMap::new(),
+        empty: HashSet::new(),
+        collider_queue: Vec::new(),
+        desired_task: None,
         // A sentinel far from any real camera forces a first pass on the first Update.
         last_camera_pos: Vec3::splat(f32::INFINITY),
     });
@@ -191,69 +247,105 @@ fn setup_world(
 fn schedule_chunk_meshing(
     mut manager: ResMut<ChunkManager>,
     camera: Query<&GlobalTransform, With<Camera3d>>,
-    mut fades: Query<&mut Fade>,
+    mut fades: Query<(&mut Fade, &MeshMaterial3d<ChunkMaterial>)>,
+    mut materials: ResMut<Assets<ChunkMaterial>>,
 ) {
-    let Ok(camera_transform) = camera.single() else {
-        return;
-    };
-    let camera_pos = camera_transform.translation();
-    if camera_pos.distance(manager.last_camera_pos) < manager.world.config.rebuild_distance {
-        return;
-    }
-    manager.last_camera_pos = camera_pos;
+    // 1. If an off-thread desired-set computation finished, diff it against the live
+    // chunks. This is the only place the (large) desired set touches the main thread,
+    // and it is just hash-set bookkeeping — the walk/balance itself ran on a task.
+    let ready = manager
+        .desired_task
+        .as_mut()
+        .and_then(|task| block_on(future::poll_once(task)));
+    if let Some(desired_vec) = ready {
+        manager.desired_task = None;
+        let desired: HashSet<lod::ChunkKey> = desired_vec.into_iter().collect();
 
-    let desired: HashSet<lod::ChunkKey> = lod::desired_chunks(&manager.world, camera_pos)
-        .into_iter()
-        .collect();
+        // Forget cached-empty chunks that are no longer wanted, to bound memory.
+        manager.empty.retain(|k| desired.contains(k));
 
-    // Active chunks that are no longer wanted start dissolving out (kept alive until
-    // fully faded so they cross-dissolve with their replacements).
-    let stale: Vec<lod::ChunkKey> = manager
-        .active
-        .keys()
-        .filter(|k| !desired.contains(k))
-        .copied()
-        .collect();
-    for key in stale {
-        if let Some(entity) = manager.active.remove(&key) {
-            if let Ok(mut fade) = fades.get_mut(entity) {
-                fade.retiring = true;
-                fade.timer = 0.0;
+        // Active chunks that are no longer wanted start dissolving out (kept alive
+        // until fully faded so they cross-dissolve with their replacements).
+        let stale: Vec<lod::ChunkKey> = manager
+            .active
+            .keys()
+            .filter(|k| !desired.contains(k))
+            .copied()
+            .collect();
+        for key in stale {
+            if let Some(entity) = manager.active.remove(&key) {
+                if let Ok((mut fade, _)) = fades.get_mut(entity) {
+                    fade.retiring = true;
+                    fade.timer = 0.0;
+                }
+                manager.retiring.insert(key, entity);
             }
-            manager.retiring.insert(key, entity);
         }
-    }
 
-    // Chunks that were retiring but are wanted again: they are already opaque, so
-    // just make them active again.
-    let revived: Vec<lod::ChunkKey> = manager
-        .retiring
-        .keys()
-        .filter(|k| desired.contains(k))
-        .copied()
-        .collect();
-    for key in revived {
-        if let Some(entity) = manager.retiring.remove(&key) {
-            if let Ok(mut fade) = fades.get_mut(entity) {
-                fade.retiring = false;
-                fade.value = 1.0;
+        // Chunks that were retiring but are wanted again: snap back to fully opaque
+        // (they may have been mid-dissolve).
+        let revived: Vec<lod::ChunkKey> = manager
+            .retiring
+            .keys()
+            .filter(|k| desired.contains(k))
+            .copied()
+            .collect();
+        for key in revived {
+            if let Some(entity) = manager.retiring.remove(&key) {
+                if let Ok((mut fade, material)) = fades.get_mut(entity) {
+                    fade.retiring = false;
+                    fade.value = 1.0;
+                    if let Some(material) = materials.get_mut(&material.0) {
+                        material.extension.params.x = 1.0;
+                    }
+                }
+                manager.active.insert(key, entity);
             }
-            manager.active.insert(key, entity);
+        }
+
+        manager.pending.retain(|key, _| desired.contains(key));
+
+        // Spawn async meshing for newly wanted chunks (on the dedicated mesh pool —
+        // see `mesh_pool` for why not `AsyncComputeTaskPool`).
+        let pool = mesh_pool();
+        for key in desired {
+            if manager.active.contains_key(&key)
+                || manager.pending.contains_key(&key)
+                || manager.empty.contains(&key)
+            {
+                continue;
+            }
+            let world = manager.world.clone();
+            let (region_min, size, sides) = key;
+            let task = pool.spawn(async move {
+                let mesh = lod::mesh_one_chunk(&world, region_min, size, sides);
+                // Build the collider here (off the main thread); only finest chunks,
+                // which are next to the player, need one.
+                let collider = if size == lod::CELLS_PER_CHUNK {
+                    Collider::trimesh_from_mesh(&mesh)
+                } else {
+                    None
+                };
+                (mesh, collider)
+            });
+            manager.pending.insert(key, task);
         }
     }
 
-    manager.pending.retain(|key, _| desired.contains(key));
-
-    // Spawn async meshing for newly wanted chunks.
-    let pool = AsyncComputeTaskPool::get();
-    for key in desired {
-        if manager.active.contains_key(&key) || manager.pending.contains_key(&key) {
-            continue;
+    // 2. Start a new desired-set computation off-thread when the camera has moved far
+    // enough and none is already running.
+    if manager.desired_task.is_none() {
+        let Ok(camera_transform) = camera.single() else {
+            return;
+        };
+        let camera_pos = camera_transform.translation();
+        if camera_pos.distance(manager.last_camera_pos) >= manager.world.config.rebuild_distance {
+            manager.last_camera_pos = camera_pos;
+            let world = manager.world.clone();
+            manager.desired_task = Some(
+                AsyncComputeTaskPool::get().spawn(async move { lod::desired_chunks(&world, camera_pos) }),
+            );
         }
-        let world = manager.world.clone();
-        let (region_min, size, sides) = key;
-        let task = pool.spawn(async move { lod::mesh_one_chunk(&world, region_min, size, sides) });
-        manager.pending.insert(key, task);
     }
 }
 
@@ -265,44 +357,63 @@ fn apply_finished_chunks(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ChunkMaterial>>,
 ) {
-    let mut finished: Vec<(lod::ChunkKey, Mesh)> = Vec::new();
-    manager.pending.retain(|key, task| {
-        match block_on(future::poll_once(&mut *task)) {
-            Some(mesh) => {
-                finished.push((*key, mesh));
-                false
-            }
-            None => true,
+    // Apply at most this many finished chunks per frame. A fast flight can finish a
+    // few hundred at once; handing them all to the renderer in one frame spikes the
+    // GPU mesh upload/prepare. Spreading them over frames is invisible thanks to the
+    // dither fade-in.
+    const MAX_APPLY_PER_FRAME: usize = 24;
+
+    let mut finished: Vec<(lod::ChunkKey, Mesh, Option<Collider>)> = Vec::new();
+    let mut done_keys: Vec<lod::ChunkKey> = Vec::new();
+    for (key, task) in manager.pending.iter_mut() {
+        if finished.len() >= MAX_APPLY_PER_FRAME {
+            break;
         }
-    });
+        if let Some((mesh, collider)) = block_on(future::poll_once(&mut *task)) {
+            finished.push((*key, mesh, collider));
+            done_keys.push(*key);
+        }
+    }
+    for key in done_keys {
+        manager.pending.remove(&key);
+    }
 
-    for (key, mesh) in finished {
-        // Finest chunks are the ones next to the player, so only they get a physics
-        // collider (built from the same mesh). This bounds collision cost by view
-        // distance, not world size. Build it before the mesh is moved into Assets.
-        let (_, size, _) = key;
-        let collider = if size == lod::CELLS_PER_CHUNK {
-            Collider::trimesh_from_mesh(&mesh)
-        } else {
-            None
-        };
+    for (key, mesh, collider) in finished {
+        // Chunks with no surface (air / solid interior) render nothing: cache the key
+        // so it is never re-meshed and never spawned as an invisible entity.
+        if mesh.indices().map(|i| i.is_empty()).unwrap_or(true) {
+            manager.empty.insert(key);
+            continue;
+        }
 
+        // The collider (finest chunks only) was already built off-thread in the
+        // meshing task, so there is no main-thread collision-build cost here.
         let handle = meshes.add(mesh);
         // Each chunk owns its material so it can fade independently. Vertex colours
         // carry the terrain material; base_color is white so they pass through.
+        // `last_camera_pos` is close enough for the spawn-frame morph factor;
+        // `update_morph_factors` keeps it current from then on.
+        let morph = lod::morph_factor(&manager.world, key, manager.last_camera_pos);
         let material = materials.add(ChunkMaterial {
             base: StandardMaterial {
                 base_color: Color::WHITE,
                 perceptual_roughness: 0.95,
                 metallic: 0.0,
+                // Mask (never actually cutting: alpha is always 1) so shadow
+                // pipelines run the material's prepass fragment shader — that is
+                // what lets the dither fade apply to shadows (see fade.rs).
+                alpha_mode: AlphaMode::Mask(0.5),
                 ..default()
             },
             extension: ChunkFade {
-                fade: 0.0,
+                params: Vec4::new(0.0, morph, 0.0, 0.0),
                 array: Some(manager.terrain_array.clone()),
             },
         });
-        let mut chunk = commands.spawn((
+        // Shadows need no special handling across the fade: the prepass fragment
+        // applies the same dither discard, so the chunk's shadow crossfades in
+        // lockstep with its visible surface.
+        let chunk = commands.spawn((
             Name::new("TerrainChunk"),
             Mesh3d(handle),
             MeshMaterial3d(material),
@@ -313,18 +424,81 @@ fn apply_finished_chunks(
                 retiring: false,
                 timer: 0.0,
             },
-            // Don't cast a shadow *while dithering in*: the shadow pass ignores the
-            // dither, so a fading-in chunk would pop a full shadow (a flash). Removed
-            // once fully opaque (see `animate_fades`), so solid terrain self-shadows.
-            NotShadowCaster,
         ));
-        if let Some(collider) = collider {
-            chunk.insert((RigidBody::Static, collider));
-        }
         let entity = chunk.id();
+        if let Some(collider) = collider {
+            let (region_min, size, _) = key;
+            let center = manager.world.config.origin
+                + (region_min.as_vec3() + Vec3::splat(size as f32 * 0.5))
+                    * manager.world.config.min_voxel_size;
+            manager.collider_queue.push((entity, center, collider));
+        }
         // Replace any prior entity for this key (e.g. a re-requested chunk).
         if let Some(old) = manager.active.insert(key, entity) {
             commands.entity(old).despawn();
+        }
+    }
+}
+
+/// Keep every chunk's geomorph factor tracking its camera distance. The factor is a
+/// per-chunk material uniform (see [`lod::morph_factor`] for why it is not computed
+/// in the shader from the view). It is quantised, and a material is only marked
+/// modified when its factor actually changes, so a stationary camera re-uploads
+/// nothing and a moving one only touches the thin shell of chunks inside their
+/// morph band.
+fn update_morph_factors(
+    manager: Res<ChunkManager>,
+    camera: Query<&GlobalTransform, With<Camera3d>>,
+    mut materials: ResMut<Assets<ChunkMaterial>>,
+    chunks: Query<(&TerrainChunk, &MeshMaterial3d<ChunkMaterial>)>,
+) {
+    let Ok(camera_transform) = camera.single() else {
+        return;
+    };
+    let camera_pos = camera_transform.translation();
+    for (chunk, material) in &chunks {
+        let morph = lod::morph_factor(&manager.world, chunk.0, camera_pos);
+        // Compare through `get` first: `get_mut` flags the asset as modified (a GPU
+        // re-prepare) even when nothing changed.
+        if materials
+            .get(&material.0)
+            .is_some_and(|m| m.extension.params.y != morph)
+            && let Some(m) = materials.get_mut(&material.0)
+        {
+            m.extension.params.y = morph;
+        }
+    }
+}
+
+/// Drain a few queued colliders per frame, nearest to the camera first. Registering
+/// a static trimesh collider costs the physics world real main-thread time (~1 ms
+/// each); attaching a whole wave of freshly meshed chunks in one frame was the main
+/// source of movement lag spikes. Latency here is invisible: colliders only matter
+/// right next to the player, and those chunks sort to the front.
+fn attach_queued_colliders(
+    mut manager: ResMut<ChunkManager>,
+    mut commands: Commands,
+    camera: Query<&GlobalTransform, With<Camera3d>>,
+) {
+    const MAX_PER_FRAME: usize = 4;
+    if manager.collider_queue.is_empty() {
+        return;
+    }
+    // Sort farthest-first so the nearest chunks pop off the tail.
+    if let Ok(camera_transform) = camera.single() {
+        let camera_pos = camera_transform.translation();
+        manager.collider_queue.sort_unstable_by(|a, b| {
+            let da = a.1.distance_squared(camera_pos);
+            let db = b.1.distance_squared(camera_pos);
+            db.total_cmp(&da)
+        });
+    }
+    let take = manager.collider_queue.len().min(MAX_PER_FRAME);
+    let at = manager.collider_queue.len() - take;
+    for (entity, _, collider) in manager.collider_queue.split_off(at) {
+        // The chunk may have been despawned (retired/replaced) while queued.
+        if let Ok(mut chunk) = commands.get_entity(entity) {
+            chunk.insert((RigidBody::Static, collider));
         }
     }
 }
@@ -340,18 +514,30 @@ fn animate_fades(
     let step = time.delta_secs() / FADE_SECONDS;
     for (entity, chunk, mut fade, material) in &mut chunks {
         if fade.retiring {
-            // Opaque backing: snap to fully visible once and let it cast shadows
-            // (it's the crossfade's solid geometry), then just count down.
-            if fade.timer == 0.0 {
-                if let Some(material) = materials.get_mut(&material.0) {
-                    material.extension.fade = 1.0;
-                }
-                commands.entity(entity).remove::<NotShadowCaster>();
+            // Opaque backing: snap to fully visible once (it's the crossfade's
+            // solid geometry) while the replacement fades in.
+            if fade.timer == 0.0
+                && let Some(material) = materials.get_mut(&material.0)
+            {
+                material.extension.params.x = 1.0;
             }
             fade.timer += time.delta_secs();
-            if fade.timer >= RETIRE_SECONDS {
+            if fade.timer < RETIRE_SECONDS {
+                continue;
+            }
+            // Backing period over: the replacement is fully opaque underneath, so
+            // dither *out* to hand pixels over gradually — any residual geometry
+            // mismatch (geomorph approximation, pinned border rings) resolves
+            // pixel-by-pixel instead of popping on the despawn frame. The shadow
+            // dissolves with it (dither applies in the shadow pass too).
+            let remaining = 1.0 - (fade.timer - RETIRE_SECONDS) / DISSOLVE_SECONDS;
+            if remaining <= 0.0 {
                 commands.entity(entity).despawn();
                 manager.retiring.remove(&chunk.0);
+                continue;
+            }
+            if let Some(material) = materials.get_mut(&material.0) {
+                material.extension.params.x = remaining;
             }
             continue;
         }
@@ -359,12 +545,8 @@ fn animate_fades(
             continue; // fully dithered in — nothing to animate
         }
         fade.value = (fade.value + step).min(1.0);
-        if fade.value >= 1.0 {
-            // Fully opaque now: start casting a shadow (self-shadowing terrain).
-            commands.entity(entity).remove::<NotShadowCaster>();
-        }
         if let Some(material) = materials.get_mut(&material.0) {
-            material.extension.fade = fade.value;
+            material.extension.params.x = fade.value;
         }
     }
 }

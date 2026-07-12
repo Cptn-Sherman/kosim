@@ -82,6 +82,37 @@ impl PlanetGenerator {
         (d < sr).then(|| self.material_at(d, sr, dir))
     }
 
+    /// Minimum and maximum distance from the planet centre to any point of the cubic
+    /// region with minimum corner `(x0, y0, z0)` and edge length `size` (voxels).
+    fn region_distance_range(&self, x0: i64, y0: i64, z0: i64, size: i64) -> (f64, f64) {
+        let mut min_sq = 0.0;
+        let mut max_sq = 0.0;
+        for (lo, hi) in [(x0, x0 + size), (y0, y0 + size), (z0, z0 + size)] {
+            let (lo, hi) = (lo as f64, hi as f64);
+            let near = if self.center < lo {
+                lo - self.center
+            } else if self.center > hi {
+                self.center - hi
+            } else {
+                0.0
+            };
+            let far = (self.center - lo).abs().max((self.center - hi).abs());
+            min_sq += near * near;
+            max_sq += far * far;
+        }
+        (min_sq.sqrt(), max_sq.sqrt())
+    }
+
+    /// Might the cubic region straddle the planet surface (i.e. produce any mesh)?
+    /// Conservative: regions entirely outside or entirely inside the noise shell are
+    /// rejected, so the LOD walk can skip them (and their whole subtree) without
+    /// descending. This is what keeps the chunk walk proportional to surface area
+    /// rather than world volume.
+    pub fn region_has_surface(&self, x0: i64, y0: i64, z0: i64, size: i64) -> bool {
+        let (min_d, max_d) = self.region_distance_range(x0, y0, z0, size);
+        min_d < self.base_radius + self.amplitude && max_d > self.base_radius - self.amplitude
+    }
+
     /// Material for a solid voxel at distance `d` from the centre whose column
     /// surface radius is `sr`, in the direction `dir`.
     fn material_at(&self, d: f64, sr: f64, dir: [f64; 3]) -> VoxelMaterial {

@@ -12,9 +12,8 @@
 //! (no shading seam), and each vertex's material is the topsoil found by marching in
 //! from the surface ([`surface_material`]), consistent across LODs.
 
-use std::collections::HashSet;
-
 use bevy::asset::RenderAssetUsages;
+use bevy::platform::collections::HashSet;
 use bevy::math::{IVec3, Vec3};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use transvoxel::generic_mesh::GenericMeshBuilder;
@@ -39,6 +38,43 @@ pub const CELLS_PER_CHUNK: i64 = 16;
 /// Side bits follow [`transvoxel::transition_sides::TransitionSide`] order:
 /// `1<<0`=LowX(-X), `1<<1`=HighX(+X), `1<<2`=LowY, `1<<3`=HighY, `1<<4`=LowZ, `1<<5`=HighZ.
 pub type ChunkKey = (IVec3, i64, u8);
+
+/// Geomorphing: a chunk's vertices slide between the parent-LOD surface and their
+/// true position as the camera approaches (see `chunk_fade.wgsl`). The morph is
+/// driven by camera distance normalised by the chunk's own LOD range: a chunk of
+/// world size `S` is a leaf while `S/θ ≤ distance < 2S/θ` (θ = `lod_threshold`), so
+/// its normalised distance ratio spans `[1, 2)`. Vertices are at full detail below
+/// [`MORPH_START_RATIO`] and fully morphed to the parent surface above
+/// [`MORPH_END_RATIO`]. The band ends well before 2 so that by the time a chunk is
+/// actually swapped for its parent (or spawned in place of it) — including LOD
+/// hysteresis and streaming latency — every vertex already sits on the parent
+/// surface, making the swap geometrically invisible.
+pub const MORPH_START_RATIO: f32 = 1.3;
+pub const MORPH_END_RATIO: f32 = 1.6;
+
+/// The camera-distance interval `(start, end)` over which a chunk of `size` voxels
+/// morphs toward the parent-LOD surface.
+pub fn morph_band(world: &VoxelWorld, size: i64) -> (f32, f32) {
+    let world_size = size as f32 * world.config.min_voxel_size;
+    let per = world_size / world.config.lod_threshold;
+    (MORPH_START_RATIO * per, MORPH_END_RATIO * per)
+}
+
+/// The geomorph factor (0 = full detail, 1 = parent surface) for a chunk whose
+/// centre the camera sees from `camera_pos`. Computed on the CPU and fed to the
+/// shader as a per-chunk uniform — rather than per-vertex from the view — because
+/// the shadow pass's `view` is the *light*, not the camera; sharing one value keeps
+/// rendered and shadow-map geometry identical. Quantised so the material uniform
+/// only changes (and re-uploads) at coarse steps.
+pub fn morph_factor(world: &VoxelWorld, key: ChunkKey, camera_pos: Vec3) -> f32 {
+    let (region_min, size, _) = key;
+    let mvs = world.config.min_voxel_size;
+    let center = world.config.origin + (region_min.as_vec3() + Vec3::splat(size as f32 * 0.5)) * mvs;
+    let (d0, d1) = morph_band(world, size);
+    let t = ((center.distance(camera_pos) - d0) / (d1 - d0)).clamp(0.0, 1.0);
+    let s = t * t * (3.0 - 2.0 * t); // smoothstep
+    (s * 64.0).round() / 64.0
+}
 
 /// The set of leaf chunks the camera should currently see. Walks the chunk octree
 /// choosing an LOD per region by distance, enforces a 2:1 balance (face-adjacent
@@ -76,6 +112,13 @@ fn collect_leaves(
     camera_pos: Vec3,
     out: &mut HashSet<(IVec3, i64)>,
 ) {
+    // Skip regions (and their whole subtree) that contain no surface — most of a
+    // planet's volume is empty air or solid interior, and processing those was the
+    // bulk of the per-move cost.
+    if !world.region_has_surface(region_min, size) {
+        return;
+    }
+
     let mvs = world.config.min_voxel_size;
     let world_size = size as f32 * mvs;
     let center =
@@ -237,7 +280,7 @@ pub fn mesh_one_chunk(world: &VoxelWorld, region_min: IVec3, size: i64, sides: u
     .build();
 
     let step = (size / CELLS_PER_CHUNK).max(1);
-    to_bevy_mesh(world, mesh, step)
+    to_bevy_mesh(world, mesh, region_min, step)
 }
 
 /// World-space centre of the planet (the cube's centre).
@@ -326,10 +369,138 @@ fn field_normal(world: &VoxelWorld, p: Vec3) -> [f32; 3] {
     }
 }
 
+/// Dense occupancy of the **parent-LOD** sample grid (double-`step`) over one
+/// chunk plus a margin, with trilinear evaluation. The parent chunk's mesh puts
+/// vertices at midpoints of parent-grid edges — which is exactly the piecewise
+/// linear approximation of this field's 0.5 isosurface — so the trilinear crossing
+/// is the correct, *continuous* geomorph target. (An earlier version sampled the
+/// binary field with nearest-grid rounding; the staircase aliasing made adjacent
+/// vertices latch onto different steps and produced spike artifacts whose shadows
+/// floated free of the visible terrain.)
+struct ParentField {
+    /// Minimum corner, in parent-grid units (voxel coords / `parent_step`).
+    min: IVec3,
+    /// Corners per axis.
+    dim: i32,
+    parent_step: i64,
+    data: Vec<bool>,
+}
+
+impl ParentField {
+    /// Extra parent cells beyond the chunk so the offset march stays in cache.
+    const MARGIN: i32 = 3;
+
+    fn build(world: &VoxelWorld, region_min: IVec3, size: i64) -> Self {
+        let parent_step = (size / CELLS_PER_CHUNK).max(1) * 2;
+        // The chunk spans `size / parent_step` parent cells; +1 for corners.
+        let cells = (size / parent_step) as i32;
+        let min = region_min / parent_step as i32 - IVec3::splat(Self::MARGIN);
+        let dim = cells + 1 + 2 * Self::MARGIN;
+        let mut data = Vec::with_capacity((dim as usize).pow(3));
+        for z in 0..dim {
+            for y in 0..dim {
+                for x in 0..dim {
+                    data.push(world.is_solid_voxel(
+                        (min.x + x) as i64 * parent_step,
+                        (min.y + y) as i64 * parent_step,
+                        (min.z + z) as i64 * parent_step,
+                    ));
+                }
+            }
+        }
+        Self {
+            min,
+            dim,
+            parent_step,
+            data,
+        }
+    }
+
+    #[inline]
+    fn corner(&self, world: &VoxelWorld, x: i32, y: i32, z: i32) -> f32 {
+        let solid = if (0..self.dim).contains(&x)
+            && (0..self.dim).contains(&y)
+            && (0..self.dim).contains(&z)
+        {
+            self.data[((z * self.dim + y) * self.dim + x) as usize]
+        } else {
+            // Outside the cached window (rare): evaluate procedurally.
+            world.is_solid_voxel(
+                (self.min.x + x) as i64 * self.parent_step,
+                (self.min.y + y) as i64 * self.parent_step,
+                (self.min.z + z) as i64 * self.parent_step,
+            )
+        };
+        if solid { 1.0 } else { 0.0 }
+    }
+
+    /// Trilinear occupancy of the parent grid at world position `p` (0 air … 1
+    /// solid). Continuous in `p`, so neighbouring vertices get consistent values.
+    fn occupancy(&self, world: &VoxelWorld, p: Vec3) -> f32 {
+        let mvs = world.config.min_voxel_size;
+        let g = (p - world.config.origin) / (mvs * self.parent_step as f32)
+            - self.min.as_vec3();
+        let base = g.floor();
+        let f = g - base;
+        let (bx, by, bz) = (base.x as i32, base.y as i32, base.z as i32);
+        let c = |dx: i32, dy: i32, dz: i32| self.corner(world, bx + dx, by + dy, bz + dz);
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let x00 = lerp(c(0, 0, 0), c(1, 0, 0), f.x);
+        let x10 = lerp(c(0, 1, 0), c(1, 1, 0), f.x);
+        let x01 = lerp(c(0, 0, 1), c(1, 0, 1), f.x);
+        let x11 = lerp(c(0, 1, 1), c(1, 1, 1), f.x);
+        let y0 = lerp(x00, x10, f.y);
+        let y1 = lerp(x01, x11, f.y);
+        lerp(y0, y1, f.z)
+    }
+}
+
+/// Signed distance along the vertex normal `n` from `p` to the parent-LOD surface
+/// (the 0.5 crossing of [`ParentField::occupancy`]) — the geomorph target.
+/// Displacing the vertex by this offset puts it on the surface the parent chunk
+/// renders. The crossing nearest the vertex wins so thin features don't snap the
+/// vertex to a different surface sheet; none within ±2 parent cells → 0 (don't
+/// morph).
+///
+/// Deterministic in `(p, n, step)` alone — never in chunk identity — so two
+/// same-LOD chunks sharing a vertex compute the identical target (no morph cracks).
+fn parent_surface_offset(world: &VoxelWorld, field: &ParentField, p: Vec3, n: Vec3, step: i64) -> f32 {
+    // Quarter of a parent cell per sample, spanning ±2 parent cells.
+    let h = step as f32 * world.config.min_voxel_size * 0.5;
+    const STEPS: i32 = 8;
+    let mut best: Option<f32> = None;
+    let mut prev = field.occupancy(world, p + n * (-(STEPS as f32) * h)) - 0.5;
+    for i in (1 - STEPS)..=STEPS {
+        let x = i as f32 * h;
+        let cur = field.occupancy(world, p + n * x) - 0.5;
+        if prev * cur < 0.0 {
+            // Bracketed the 0.5 level: linear refine inside the bracket.
+            let t = x - h + h * (-prev) / (cur - prev);
+            if best.is_none_or(|b: f32| t.abs() < b.abs()) {
+                best = Some(t);
+            }
+        }
+        prev = cur;
+    }
+    best.unwrap_or(0.0)
+}
+
 /// Convert a Transvoxel [`transvoxel::generic_mesh::Mesh`] to a Bevy mesh. Normals
 /// are recomputed seam-consistently (see [`field_normal`]); each vertex's colour
-/// carries the material's texture-array layer in its red channel.
-fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>, step: i64) -> Mesh {
+/// carries per-vertex terrain data (texturing has no UVs to spare):
+/// - `r`: the material's texture-array layer,
+/// - `gba`: the geomorph displacement vector to the parent-LOD surface (world
+///   units) — the parent-offset march along the normal, premultiplied by an
+///   edge-pin weight that is 0 at chunk faces (keeping Transvoxel transition
+///   stitching and same-LOD borders watertight while interiors morph) and ramps to
+///   1 a few cells inward. A full vector rather than a scalar because the shadow
+///   prepass has no normal attribute to displace along.
+fn to_bevy_mesh(
+    world: &VoxelWorld,
+    mesh: transvoxel::generic_mesh::Mesh<f32>,
+    region_min: IVec3,
+    step: i64,
+) -> Mesh {
     let positions: Vec<[f32; 3]> = mesh
         .positions
         .chunks_exact(3)
@@ -342,13 +513,27 @@ fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>, s
         .map(|p| field_normal(world, Vec3::from_array(*p)))
         .collect();
 
-    // The vertex colour carries the material's texture-array layer index in its red
-    // channel (unclamped float); the chunk shader reads it back to pick a texture.
+    let mvs = world.config.min_voxel_size;
+    let base = world.config.origin + region_min.as_vec3() * mvs;
+    let cell = step as f32 * mvs;
+    // Cells over which the geomorph weight ramps from 0 (chunk face) to 1.
+    const PIN_RAMP_CELLS: f32 = 3.0;
+    let parent_field = ParentField::build(world, region_min, step * CELLS_PER_CHUNK);
+
     let colors: Vec<[f32; 4]> = positions
         .iter()
-        .map(|p| {
-            let layer = surface_material(world, Vec3::from_array(*p), step).layer();
-            [layer as f32, 0.0, 0.0, 1.0]
+        .zip(&normals)
+        .map(|(p, n)| {
+            let p = Vec3::from_array(*p);
+            let n = Vec3::from_array(*n);
+            let layer = surface_material(world, p, step).layer();
+            let offset = parent_surface_offset(world, &parent_field, p, n, step);
+            // Distance (in cells) to the nearest chunk face → edge-pin weight.
+            let c = (p - base) / cell;
+            let to_face = c.min(Vec3::splat(CELLS_PER_CHUNK as f32) - c);
+            let weight = (to_face.min_element() / PIN_RAMP_CELLS).clamp(0.0, 1.0);
+            let d = n * (offset * weight);
+            [layer as f32, d.x, d.y, d.z]
         })
         .collect();
 
