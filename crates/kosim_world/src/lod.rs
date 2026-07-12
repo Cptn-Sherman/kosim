@@ -37,6 +37,7 @@ use transvoxel::voxel_source::BlockDims;
 
 use crate::VoxelWorld;
 use crate::tables::{CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE};
+use crate::voxel::VoxelMaterial;
 
 /// Marching cells per axis in a leaf chunk. A region is meshed with cell step
 /// `region_voxels / CELLS_PER_CHUNK`, so a chunk keeps a bounded triangle budget
@@ -437,7 +438,31 @@ pub fn mesh_one_chunk(world: &VoxelWorld, region_min: IVec3, size: i64, sides: u
     )
     .build();
 
-    to_bevy_mesh(world, mesh)
+    let step = (size / CELLS_PER_CHUNK).max(1);
+    to_bevy_mesh(world, mesh, step)
+}
+
+/// The surface (topsoil) material at a vertex: march inward from just outside the
+/// vertex along `-normal` and take the first solid voxel. Starting outside (by a
+/// whole coarse cell) makes this find the same fine-resolution surface voxel at every
+/// LOD, so a vertex's material no longer changes when its chunk switches LOD.
+fn surface_material(world: &VoxelWorld, p: Vec3, n: Vec3, step: i64) -> VoxelMaterial {
+    let mvs = world.config.min_voxel_size;
+    let origin = world.config.origin;
+    let march = step as f32 * mvs; // one coarse cell
+    let sample_step = mvs * 0.5;
+    let start = p + n * march; // safely outside the fine surface
+    let count = ((2.0 * march) / sample_step).ceil() as i32 + 1;
+    for i in 0..count {
+        let sp = start - n * (i as f32 * sample_step);
+        let v = (sp - origin) / mvs;
+        if let Some(material) =
+            world.voxel_material(v.x.floor() as i64, v.y.floor() as i64, v.z.floor() as i64)
+        {
+            return material;
+        }
+    }
+    VoxelMaterial::Stone
 }
 
 /// Outward surface normal at world position `p`, from the trilinear gradient of the
@@ -497,10 +522,7 @@ fn field_normal(world: &VoxelWorld, p: Vec3) -> [f32; 3] {
 /// Convert a Transvoxel [`transvoxel::generic_mesh::Mesh`] to a Bevy mesh. Normals
 /// are recomputed seam-consistently (see [`field_normal`]); each vertex's colour is
 /// the material of the voxel just inside the surface.
-fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>) -> Mesh {
-    let mvs = world.config.min_voxel_size;
-    let origin = world.config.origin;
-
+fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>, step: i64) -> Mesh {
     let positions: Vec<[f32; 3]> = mesh
         .positions
         .chunks_exact(3)
@@ -519,20 +541,8 @@ fn to_bevy_mesh(world: &VoxelWorld, mesh: transvoxel::generic_mesh::Mesh<f32>) -
         .iter()
         .zip(normals.iter())
         .map(|(p, n)| {
-            // Step half a voxel back along the outward normal to land inside solid.
-            let inside = Vec3::new(
-                p[0] - n[0] * mvs * 0.5 - origin.x,
-                p[1] - n[1] * mvs * 0.5 - origin.y,
-                p[2] - n[2] * mvs * 0.5 - origin.z,
-            ) / mvs;
-            let layer = world
-                .voxel_material(
-                    inside.x.floor() as i64,
-                    inside.y.floor() as i64,
-                    inside.z.floor() as i64,
-                )
-                .unwrap_or(crate::voxel::VoxelMaterial::Stone)
-                .layer();
+            let layer =
+                surface_material(world, Vec3::from_array(*p), Vec3::from_array(*n), step).layer();
             [layer as f32, 0.0, 0.0, 1.0]
         })
         .collect();

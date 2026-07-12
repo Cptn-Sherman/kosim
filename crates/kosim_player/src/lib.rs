@@ -157,7 +157,9 @@ pub fn spawn_player(
                 linear_velocity: LinearVelocity::from(Vec3::ZERO),
                 impulse_force: ConstantLinearAcceleration::new(0.0, 0.0, 0.0),
                 gravity_scale: GravityScale(1.0),
-                transform: Transform::from_xyz(0.0, 16.0, 0.0),
+                // Above the planet's north pole (surface ~y=54); the player falls
+                // onto it. Point gravity that lets you stand anywhere is Phase 4b.
+                transform: Transform::from_xyz(0.0, 60.0, 0.0),
                 // Probe the ground with a sphere the width of the capsule instead
                 // of a thin ray, so the body floats clear of the tallest surface
                 // under its whole footprint (see `GROUND_PROBE_RADIUS`). Defaults

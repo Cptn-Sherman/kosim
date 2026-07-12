@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use avian3d::prelude::{Collider, RigidBody};
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 
@@ -61,10 +62,10 @@ impl Default for WorldConfig {
         Self {
             min_voxel_size: DEFAULT_MIN_VOXEL_SIZE,
             max_depth: DEFAULT_MAX_DEPTH,
-            // Centre the world horizontally on the origin and place its top face
-            // at y = 2 (just under the ground platform): a 128-unit world spanning
-            // y ∈ [-126, 2], so terrain peaks sit a few units below the platform.
-            origin: Vec3::new(-64.0, -126.0, -64.0),
+            // Centre the cube on the world origin so the planet's centre is at
+            // (0, 0, 0). A 256-voxel cube at 0.5 units spans [-64, 64]; the planet
+            // radius is 0.42 * 256 * 0.5 ≈ 54 units, so its surface reaches ~y = 54.
+            origin: Vec3::new(-64.0, -64.0, -64.0),
             // Higher = LOD coarsens sooner (closer). At 0.5 the finest chunks
             // (8-unit) are used within ~32 units and terrain steps down through
             // coarser steps beyond that, so LOD is visible across the 128-unit world.
@@ -354,6 +355,10 @@ fn apply_finished_chunks(
                     retiring: false,
                     timer: 0.0,
                 },
+                // Terrain doesn't cast shadows: the dither crossfade doesn't apply
+                // in the shadow pass (it would flash), and shadow-casting hundreds of
+                // streamed chunks is a big cost. The sun still lights via normals.
+                NotShadowCaster,
             ))
             .id();
         // Replace any prior entity for this key (e.g. a re-requested chunk).

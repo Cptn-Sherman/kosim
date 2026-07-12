@@ -32,10 +32,10 @@ pub const TEXTURE_SIZE: u32 = 32;
 
 /// Time in seconds for a new chunk to fully dither in.
 pub const FADE_SECONDS: f32 = 0.4;
-/// How long a replaced chunk stays (opaque, as a backing) before despawning. Must
-/// comfortably exceed mesh latency + [`FADE_SECONDS`] so its replacements are solid
-/// before it is removed.
-pub const RETIRE_SECONDS: f32 = 0.8;
+/// How long a replaced chunk stays (opaque, as a backing) before despawning. Kept
+/// just above [`FADE_SECONDS`] so replacements are solid before it is removed, while
+/// not piling up too many backing chunks during fast camera movement.
+pub const RETIRE_SECONDS: f32 = 0.5;
 
 /// StandardMaterial extension: the terrain texture array plus the per-chunk fade.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]

@@ -1,141 +1,134 @@
-//! Procedural generation of a sample voxel scene using fractal noise.
+//! Procedural generation of a spherical planet using fractal noise.
 //!
-//! Terrain is heightmap based: a fractal Brownian-motion (fBm) Perlin field is
-//! sampled per column to produce a surface height, then the octree is built
-//! top-down so that homogeneous regions (deep stone, open sky) never recurse to
-//! individual voxels. This keeps generation fast and produces an already-
-//! compressed tree.
+//! The world is a cube of voxels; the planet is the ball of solid matter centred in
+//! it. A voxel is solid when its distance from the planet centre is less than the
+//! local surface radius — a base radius plus a 3-D fractal Brownian-motion field
+//! sampled over the surface direction, giving continents and mountains. The octree
+//! is built recursively: whole regions that are entirely inside the planet collapse
+//! to a stone leaf and regions entirely outside collapse to empty, so only the thin
+//! surface shell recurses to individual voxels.
 
 use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 
 use crate::octree::OctNode;
 use crate::voxel::{Voxel, VoxelMaterial};
 
-/// Number of surface voxels coloured as grass/snow (the very top layer).
-const TOPSOIL_GRASS: i32 = 1;
-/// Additional voxels below the grass coloured as dirt before stone begins.
-const TOPSOIL_DIRT: i32 = 3;
-/// Total depth of the non-stone surface band.
-const SURFACE_BAND: i32 = TOPSOIL_GRASS + TOPSOIL_DIRT;
+/// Voxels of grass/snow/sand at the very surface.
+const TOPSOIL: f64 = 1.0;
+/// Total depth of the non-stone surface band (grass/sand/snow over dirt).
+const SURFACE_BAND: f64 = 4.0;
 
-/// Builds a procedural heightmap terrain and returns the octree root.
-///
-/// * `dim` — world edge length in voxels (a power of two, `2^max_depth`).
-/// * `seed` — noise seed for reproducibility.
-pub struct TerrainGenerator {
-    dim: i64,
-    /// Per-column surface height in voxels, indexed `x * dim + z`.
-    heights: Vec<i32>,
-    /// Height above which surfaces are snow-capped.
-    snow_line: i32,
-    /// Height below which flat surfaces are sandy beaches.
-    sand_line: i32,
+/// Generates a planet octree centred in a `dim`-voxel cube.
+pub struct PlanetGenerator {
+    /// Planet centre in voxel coordinates (the cube centre).
+    center: f64,
+    /// Mean surface radius in voxels.
+    base_radius: f64,
+    /// Peak-to-mean relief of the surface noise, in voxels.
+    amplitude: f64,
+    fbm: Fbm<Perlin>,
 }
 
-impl TerrainGenerator {
+impl PlanetGenerator {
     pub fn new(dim: i64, seed: u32) -> Self {
-        // A handful of octaves gives rolling hills with some fine detail.
         let fbm = Fbm::<Perlin>::new(seed)
-            .set_octaves(5)
+            .set_octaves(4)
             .set_persistence(0.5)
             .set_frequency(1.0);
-
-        // The terrain occupies most of the vertical range: a wide amplitude band
-        // gives dramatic relief (deep valleys to tall, near-top peaks) while
-        // still leaving solid ground below and a sliver of open air above for the
-        // LOD to work with.
-        let min_h = (dim as f64 * 0.15) as i32;
-        let max_h = (dim as f64 * 0.92) as i32;
-        // Spatial scale: a few hills across the whole world.
-        let scale = 3.0_f64;
-
-        let mut heights = vec![0i32; (dim * dim) as usize];
-        for x in 0..dim {
-            for z in 0..dim {
-                let nx = x as f64 / dim as f64 * scale;
-                let nz = z as f64 / dim as f64 * scale;
-                // fBm returns roughly [-1, 1]; remap to [0, 1].
-                let n = (fbm.get([nx, nz]) * 0.5 + 0.5).clamp(0.0, 1.0);
-                // Bias with a mild curve so peaks are less common than plains.
-                let n = n * n * (3.0 - 2.0 * n); // smoothstep
-                let h = min_h + (n * (max_h - min_h) as f64) as i32;
-                heights[(x * dim + z) as usize] = h.clamp(1, dim as i32);
-            }
-        }
-
-        let snow_line = (max_h as f64 * 0.82) as i32;
-        let sand_line = min_h + 2;
-
+        let base_radius = dim as f64 * 0.42;
         Self {
-            dim,
-            heights,
-            snow_line,
-            sand_line,
+            center: dim as f64 / 2.0,
+            base_radius,
+            amplitude: base_radius * 0.10,
+            fbm,
         }
     }
 
-    #[inline]
-    fn height(&self, x: i64, z: i64) -> i32 {
-        self.heights[(x * self.dim + z) as usize]
+    /// Surface radius (voxels) in the direction of the unit vector `dir`.
+    fn surface_radius(&self, dir: [f64; 3]) -> f64 {
+        // A few large features across the sphere.
+        const FREQ: f64 = 2.5;
+        let n = self
+            .fbm
+            .get([dir[0] * FREQ, dir[1] * FREQ, dir[2] * FREQ]);
+        self.base_radius + n * self.amplitude
     }
 
-    /// Minimum and maximum surface height over the square column footprint
-    /// `[x0, x0+size) x [z0, z0+size)`.
-    fn column_min_max(&self, x0: i64, z0: i64, size: i64) -> (i32, i32) {
-        let mut lo = i32::MAX;
-        let mut hi = i32::MIN;
-        for x in x0..x0 + size {
-            for z in z0..z0 + size {
-                let h = self.height(x, z);
-                lo = lo.min(h);
-                hi = hi.max(h);
-            }
+    /// Minimum and maximum distance from the planet centre to any point of the cubic
+    /// region with minimum corner `(x0, y0, z0)` and edge length `size` (voxels).
+    fn region_distance_range(&self, x0: i64, y0: i64, z0: i64, size: i64) -> (f64, f64) {
+        let mut min_sq = 0.0;
+        let mut max_sq = 0.0;
+        for (lo, hi) in [(x0, x0 + size), (y0, y0 + size), (z0, z0 + size)] {
+            let lo = lo as f64;
+            let hi = hi as f64;
+            // Nearest point on this axis' span to the centre (0 if the centre is
+            // inside the span), and the farther of the two ends.
+            let near = if self.center < lo {
+                lo - self.center
+            } else if self.center > hi {
+                self.center - hi
+            } else {
+                0.0
+            };
+            let far = (self.center - lo).abs().max((self.center - hi).abs());
+            min_sq += near * near;
+            max_sq += far * far;
         }
-        (lo, hi)
+        (min_sq.sqrt(), max_sq.sqrt())
     }
 
-    /// Material for the solid voxel at `(x, y, z)` given its column surface `h`.
-    fn material_at(&self, y: i64, h: i32) -> VoxelMaterial {
-        let depth_from_top = h - 1 - y as i32;
-        if depth_from_top < TOPSOIL_GRASS {
-            if h >= self.snow_line {
+    /// Material for a solid voxel at distance `d` from the centre whose column
+    /// surface radius is `sr`, in the direction `dir`.
+    fn material_at(&self, d: f64, sr: f64, dir: [f64; 3]) -> VoxelMaterial {
+        let depth = sr - d;
+        if depth < TOPSOIL {
+            // Snowy near the poles, sandy in the low equatorial basins, else grass.
+            let latitude = dir[1].abs();
+            if latitude > 0.8 {
                 VoxelMaterial::Snow
-            } else if h <= self.sand_line {
+            } else if sr < self.base_radius - self.amplitude * 0.4 {
                 VoxelMaterial::Sand
             } else {
                 VoxelMaterial::Grass
             }
-        } else if depth_from_top < SURFACE_BAND {
+        } else if depth < SURFACE_BAND {
             VoxelMaterial::Dirt
         } else {
             VoxelMaterial::Stone
         }
     }
 
-    /// Recursively build the octree for the cube whose minimum corner is
-    /// `(x0, y0, z0)` with edge length `size` voxels.
+    /// Recursively build the octree for the cube with minimum corner `(x0, y0, z0)`
+    /// and edge length `size` voxels.
     pub fn build(&self, x0: i64, y0: i64, z0: i64, size: i64) -> OctNode {
-        let (hmin, hmax) = self.column_min_max(x0, z0, size);
+        let (min_d, max_d) = self.region_distance_range(x0, y0, z0, size);
 
-        // Entire region sits above every column's surface: pure air.
-        if y0 as i32 >= hmax {
+        // Entirely outside the planet: empty.
+        if min_d >= self.base_radius + self.amplitude {
             return OctNode::Empty;
         }
+        // Entirely inside, below the surface band: solid stone. The key pruning step.
+        if max_d <= self.base_radius - self.amplitude - SURFACE_BAND {
+            return OctNode::Leaf(Voxel::new(VoxelMaterial::Stone));
+        }
 
-        // A single voxel: resolve directly.
+        // A single voxel straddling the shell: resolve it at its centre.
         if size == 1 {
-            let h = self.height(x0, z0);
-            return if (y0 as i32) < h {
-                OctNode::Leaf(Voxel::new(self.material_at(y0, h)))
+            let px = x0 as f64 + 0.5 - self.center;
+            let py = y0 as f64 + 0.5 - self.center;
+            let pz = z0 as f64 + 0.5 - self.center;
+            let d = (px * px + py * py + pz * pz).sqrt();
+            if d < 1.0e-6 {
+                return OctNode::Leaf(Voxel::new(VoxelMaterial::Stone));
+            }
+            let dir = [px / d, py / d, pz / d];
+            let sr = self.surface_radius(dir);
+            return if d < sr {
+                OctNode::Leaf(Voxel::new(self.material_at(d, sr, dir)))
             } else {
                 OctNode::Empty
             };
-        }
-
-        // Entire region is deep below the surface band: uniform stone. This is
-        // the key pruning step that keeps deep ground from recursing to voxels.
-        if (y0 + size) as i32 <= hmin - SURFACE_BAND {
-            return OctNode::Leaf(Voxel::new(VoxelMaterial::Stone));
         }
 
         // Otherwise the region straddles the surface: subdivide.
@@ -150,8 +143,8 @@ impl TerrainGenerator {
     }
 }
 
-/// Generate the sample terrain octree for a world of `dim` voxels per axis.
+/// Generate the planet octree for a world of `dim` voxels per axis.
 pub fn generate_terrain(dim: i64, seed: u32) -> OctNode {
-    let generator = TerrainGenerator::new(dim, seed);
+    let generator = PlanetGenerator::new(dim, seed);
     generator.build(0, 0, 0, dim)
 }
