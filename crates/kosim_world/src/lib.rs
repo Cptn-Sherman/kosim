@@ -271,8 +271,8 @@ fn schedule_chunk_meshing(
             continue;
         }
         let world = manager.world.clone();
-        let (region_min, size) = key;
-        let task = pool.spawn(async move { lod::mesh_one_chunk(&world, region_min, size) });
+        let (region_min, size, sides) = key;
+        let task = pool.spawn(async move { lod::mesh_one_chunk(&world, region_min, size, sides) });
         manager.pending.insert(key, task);
     }
 }

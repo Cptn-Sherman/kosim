@@ -13,3 +13,7 @@ bevy = { version = "0.18.1", features = [
 ] }
 avian3d = { version = "0.6" }
 noise = "0.9"
+# Transvoxel transition-cell meshing. default-features=false drops its optional
+# bevy 0.10 / serde deps; we only use the engine-independent extractor and feed it
+# a binary +/-1 field so vertices land on exact grid midpoints (no interpolation).
+transvoxel = { version = "1.0", default-features = false }
