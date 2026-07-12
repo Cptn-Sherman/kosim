@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use avian3d::{
     PhysicsPlugins,
-    prelude::{Collider, Mass, PhysicsDebugPlugin, RigidBody},
+    prelude::{Collider, Mass, PhysicsDebugPlugin, PhysicsGizmos, RigidBody},
 };
 use bevy::{
     color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
@@ -66,8 +66,18 @@ fn main() {
             Startup,
             (setup, start_background_audio).chain(),
         )
+        .add_systems(Startup, configure_physics_gizmos)
         .add_systems(Update, (close_on_key,))
         .run();
+}
+
+// The terrain collider is a ~1M-triangle static trimesh. Avian's PhysicsDebugPlugin
+// draws every collider's wireframe by default, and drawing millions of line segments
+// per frame collapses the framerate. Keep the other physics debug gizmos (shape/ray
+// casts used while tuning the player controller) but stop drawing colliders.
+fn configure_physics_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (_, physics) = store.config_mut::<PhysicsGizmos>();
+    physics.collider_color = None;
 }
 
 fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<Audio>) {

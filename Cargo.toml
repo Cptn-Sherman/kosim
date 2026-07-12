@@ -36,5 +36,10 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# The voxel mesher runs per camera move and is hashmap/iteration heavy; keep it
+# fully optimised even in dev so LOD remeshes don't hitch.
+[profile.dev.package.kosim_world]
+opt-level = 3
+
 [features]
 use-debug-plugin = []
