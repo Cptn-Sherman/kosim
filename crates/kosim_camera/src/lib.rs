@@ -26,10 +26,8 @@ use kosim_utility::get_valid_extension;
 use kosim_utility::interpolated_value::InterpolatedValue;
 
 use crate::first_person_camera::{DynamicCameraMovement, camera_lean};
-use crate::freecam::{create_free_camera, move_free_camera};
 
 pub mod first_person_camera;
-pub mod freecam;
 pub mod third_person_camera;
 
 const DEFAULT_SCREENSHOT_FORMAT: &str = "png";
@@ -57,16 +55,11 @@ impl Plugin for KosimCameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(CameraConfig::default())
             .insert_resource(ClearColor(Color::BLACK))
-            .add_systems(PreStartup, (create_camera, create_free_camera))
+            .add_systems(PreStartup, create_camera)
             .add_systems(Startup, load_toggle_camera_soundfxs)
             .add_systems(
                 FixedUpdate,
-                (
-                    take_screenshot,
-                    move_free_camera,
-                    play_toggle_camera_soundfx,
-                    camera_lean,
-                ),
+                (take_screenshot, play_toggle_camera_soundfx, camera_lean),
             )
             .add_message::<ToggleCameraEvent>();
     }

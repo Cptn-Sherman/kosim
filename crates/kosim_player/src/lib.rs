@@ -55,6 +55,7 @@ pub mod body;
 pub mod config;
 pub mod debug;
 pub mod focus;
+pub mod freecam;
 pub mod motion;
 pub mod stance;
 
@@ -63,6 +64,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerControlConfig::default()); // later we will load from some toml file
+        app.init_resource::<crate::freecam::FreeCam>();
         app.add_plugins(EnhancedInputPlugin)
             .add_input_context::<Player>();
         app.add_systems(
@@ -75,13 +77,15 @@ impl Plugin for PlayerPlugin {
             )
                 .chain(),
         );
+        app.add_systems(Update, crate::freecam::toggle_free_cam);
         app.add_systems(
             FixedUpdate,
             (
-                camera_look_system,
-                player_rotation_system,
-                player_motion_system,
-                run_move_and_slide,
+                camera_look_system.run_if(crate::freecam::player_control_active),
+                player_rotation_system.run_if(crate::freecam::player_control_active),
+                player_motion_system.run_if(crate::freecam::player_control_active),
+                run_move_and_slide.run_if(crate::freecam::player_control_active),
+                crate::freecam::free_cam_control.run_if(crate::freecam::free_cam_active),
                 compute_next_stance,
                 detect_action_jumping,
                 detect_action_crouching,
