@@ -28,6 +28,10 @@ impl Default for PlayerControlConfig {
     fn default() -> Self {
         Self {
             capsule_height: 1.0,
+            // The capsule floats this far above the surface. It must clear the
+            // terrain bumps so the ride spring (not move_and_slide collisions) catches
+            // and holds the body — too low and the capsule collides with the ground,
+            // which injects sideways velocity and the body never settles.
             ride_height: 1.5,
             ride_height_step_offset: 0.15,
             ray_length_offset: 0.15,

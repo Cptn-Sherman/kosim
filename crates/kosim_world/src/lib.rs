@@ -21,21 +21,19 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 pub mod fade;
 pub mod generation;
 pub mod lod;
-pub mod octree;
-pub mod tables;
 pub mod voxel;
 
 use fade::{ChunkFade, ChunkMaterial, FADE_SECONDS, Fade, RETIRE_SECONDS};
-use octree::OctNode;
 use voxel::VoxelMaterial;
 
 /// Default edge length of the smallest voxel, in world units.
 pub const DEFAULT_MIN_VOXEL_SIZE: f32 = 0.5;
-/// Default octree depth. `2^8 = 256` voxels per axis → a 128-unit world at
-/// 0.5-unit resolution. The world is large enough that camera-driven LOD
-/// (Phase 2) actually engages and can be seen; the trade-off is a heavier
-/// full-resolution startup mesh and collider.
-pub const DEFAULT_MAX_DEPTH: u32 = 8;
+/// Default octree depth. `2^11 = 2048` voxels per axis → a 1024-unit world at
+/// 0.5-unit resolution (~8× the earlier 128-unit world). This is only feasible
+/// because the world is sampled procedurally on demand (no eager octree) and
+/// colliders/meshes are streamed per chunk near the camera — nothing is built over
+/// the whole `dim³` volume.
+pub const DEFAULT_MAX_DEPTH: u32 = 11;
 
 /// Tunable parameters for the voxel world.
 #[derive(Resource, Clone, Debug)]
@@ -63,9 +61,9 @@ impl Default for WorldConfig {
             min_voxel_size: DEFAULT_MIN_VOXEL_SIZE,
             max_depth: DEFAULT_MAX_DEPTH,
             // Centre the cube on the world origin so the planet's centre is at
-            // (0, 0, 0). A 256-voxel cube at 0.5 units spans [-64, 64]; the planet
-            // radius is 0.42 * 256 * 0.5 ≈ 54 units, so its surface reaches ~y = 54.
-            origin: Vec3::new(-64.0, -64.0, -64.0),
+            // (0, 0, 0). A 2048-voxel cube at 0.5 units spans [-512, 512]; the planet
+            // radius is 0.42 * 2048 * 0.5 ≈ 430 units, so its surface reaches ~y=430.
+            origin: Vec3::new(-512.0, -512.0, -512.0),
             // Higher = LOD coarsens sooner (closer). At 0.5 the finest chunks
             // (8-unit) are used within ~32 units and terrain steps down through
             // coarser steps beyond that, so LOD is visible across the 128-unit world.
@@ -78,69 +76,39 @@ impl Default for WorldConfig {
     }
 }
 
-/// The voxel world state: the octree plus the geometry needed to address it.
+/// The voxel world state: the procedural planet generator plus the geometry needed
+/// to address it. Voxels are evaluated on demand (see [`generation`]) rather than
+/// stored, so the world uses no memory proportional to its size.
 #[derive(Resource)]
 pub struct VoxelWorld {
-    pub root: OctNode,
+    pub generator: generation::PlanetGenerator,
     /// Voxels per axis (`2^max_depth`).
     pub dim: i64,
     pub config: WorldConfig,
 }
 
 impl VoxelWorld {
-    /// Generate a fresh world from `config` using the procedural sample scene.
+    /// Create a fresh world from `config`. Nothing is generated eagerly.
     pub fn generate(config: WorldConfig) -> Self {
         let dim = 1i64 << config.max_depth;
-        let root = generation::generate_terrain(dim, config.seed);
-        Self { root, dim, config }
+        let generator = generation::PlanetGenerator::new(dim, config.seed);
+        Self {
+            generator,
+            dim,
+            config,
+        }
     }
 
-    /// Is the voxel at integer voxel coordinates `(x, y, z)` solid? Coordinates
-    /// outside the world are empty.
+    /// Is the voxel at integer voxel coordinates `(x, y, z)` solid?
     #[inline]
     pub fn is_solid_voxel(&self, x: i64, y: i64, z: i64) -> bool {
-        self.root.is_solid(x, y, z, self.dim)
+        self.generator.is_solid(x, y, z)
     }
 
-    /// Material of the voxel at `(x, y, z)`, or `None` if it is empty/outside.
+    /// Material of the voxel at `(x, y, z)`, or `None` if it is outside the planet.
     #[inline]
     pub fn voxel_material(&self, x: i64, y: i64, z: i64) -> Option<VoxelMaterial> {
-        self.root.voxel_at(x, y, z, self.dim).map(|v| v.material)
-    }
-
-    /// Is the grid-aligned region `[min, min + size)` entirely solid? Regions
-    /// that are not fully within the world are treated as not solid, so the outer
-    /// shell of the world renders its faces.
-    pub fn region_full_solid(&self, min: IVec3, size: i64) -> bool {
-        if min.x < 0
-            || min.y < 0
-            || min.z < 0
-            || (min.x as i64 + size) > self.dim
-            || (min.y as i64 + size) > self.dim
-            || (min.z as i64 + size) > self.dim
-        {
-            return false;
-        }
-        self.root
-            .region_full_solid(min.x as i64, min.y as i64, min.z as i64, size, self.dim)
-    }
-
-    /// Every solid minimum-voxel grid coordinate in the world, at leaf
-    /// resolution. Feeds a parry `Voxels` collider (see [`Collider::voxels`]).
-    pub fn solid_voxel_coords(&self) -> Vec<IVec3> {
-        let mut coords = Vec::new();
-        self.root.collect_solid(IVec3::ZERO, self.dim, &mut coords);
-        coords
-    }
-
-    /// Is the point `p` (world space) inside solid matter?
-    pub fn is_solid_world(&self, p: Vec3) -> bool {
-        let local = (p - self.config.origin) / self.config.min_voxel_size;
-        self.is_solid_voxel(
-            local.x.floor() as i64,
-            local.y.floor() as i64,
-            local.z.floor() as i64,
-        )
+        self.generator.material_at_voxel(x, y, z)
     }
 }
 
@@ -201,29 +169,10 @@ fn setup_world(
 
     let terrain_array = images.add(fade::build_terrain_texture_array());
 
-    // Static collider from the *full-resolution* isosurface (independent of the
-    // visual LOD, so physics is consistent everywhere). Built from the same welded
-    // buffers as the mesher, so it matches the rendered slopes; positions are
-    // already world-space, so the collider entity sits at the origin.
-    let collider_mesh = lod::build_terrain_mesh(&world);
-    info!(
-        "kosim_world: collider isosurface has {} vertices, {} triangles",
-        collider_mesh.collider_vertices.len(),
-        collider_mesh.collider_indices.len(),
-    );
-    match Collider::try_trimesh(collider_mesh.collider_vertices, collider_mesh.collider_indices) {
-        Ok(collider) => {
-            commands.spawn((
-                Name::new("VoxelWorldCollider"),
-                RigidBody::Static,
-                collider,
-                Transform::IDENTITY,
-            ));
-        }
-        Err(err) => {
-            error!("kosim_world: failed to build terrain trimesh collider: {err:?}");
-        }
-    }
+    // No whole-world collider: it was O(dim^3) to build and a giant static trimesh,
+    // which caps the world size. Instead each *finest* streamed chunk near the player
+    // gets its own trimesh collider (see `apply_finished_chunks`), so collision cost
+    // is bounded regardless of how large the planet is.
 
     commands.insert_resource(ChunkManager {
         world: Arc::new(world),
@@ -328,6 +277,16 @@ fn apply_finished_chunks(
     });
 
     for (key, mesh) in finished {
+        // Finest chunks are the ones next to the player, so only they get a physics
+        // collider (built from the same mesh). This bounds collision cost by view
+        // distance, not world size. Build it before the mesh is moved into Assets.
+        let (_, size, _) = key;
+        let collider = if size == lod::CELLS_PER_CHUNK {
+            Collider::trimesh_from_mesh(&mesh)
+        } else {
+            None
+        };
+
         let handle = meshes.add(mesh);
         // Each chunk owns its material so it can fade independently. Vertex colours
         // carry the terrain material; base_color is white so they pass through.
@@ -343,24 +302,26 @@ fn apply_finished_chunks(
                 array: Some(manager.terrain_array.clone()),
             },
         });
-        let entity = commands
-            .spawn((
-                Name::new("TerrainChunk"),
-                Mesh3d(handle),
-                MeshMaterial3d(material),
-                Transform::IDENTITY,
-                TerrainChunk(key),
-                Fade {
-                    value: 0.0,
-                    retiring: false,
-                    timer: 0.0,
-                },
-                // Terrain doesn't cast shadows: the dither crossfade doesn't apply
-                // in the shadow pass (it would flash), and shadow-casting hundreds of
-                // streamed chunks is a big cost. The sun still lights via normals.
-                NotShadowCaster,
-            ))
-            .id();
+        let mut chunk = commands.spawn((
+            Name::new("TerrainChunk"),
+            Mesh3d(handle),
+            MeshMaterial3d(material),
+            Transform::IDENTITY,
+            TerrainChunk(key),
+            Fade {
+                value: 0.0,
+                retiring: false,
+                timer: 0.0,
+            },
+            // Don't cast a shadow *while dithering in*: the shadow pass ignores the
+            // dither, so a fading-in chunk would pop a full shadow (a flash). Removed
+            // once fully opaque (see `animate_fades`), so solid terrain self-shadows.
+            NotShadowCaster,
+        ));
+        if let Some(collider) = collider {
+            chunk.insert((RigidBody::Static, collider));
+        }
+        let entity = chunk.id();
         // Replace any prior entity for this key (e.g. a re-requested chunk).
         if let Some(old) = manager.active.insert(key, entity) {
             commands.entity(old).despawn();
@@ -379,11 +340,13 @@ fn animate_fades(
     let step = time.delta_secs() / FADE_SECONDS;
     for (entity, chunk, mut fade, material) in &mut chunks {
         if fade.retiring {
-            // Opaque backing: snap to fully visible once, then just count down.
-            if fade.timer == 0.0
-                && let Some(material) = materials.get_mut(&material.0)
-            {
-                material.extension.fade = 1.0;
+            // Opaque backing: snap to fully visible once and let it cast shadows
+            // (it's the crossfade's solid geometry), then just count down.
+            if fade.timer == 0.0 {
+                if let Some(material) = materials.get_mut(&material.0) {
+                    material.extension.fade = 1.0;
+                }
+                commands.entity(entity).remove::<NotShadowCaster>();
             }
             fade.timer += time.delta_secs();
             if fade.timer >= RETIRE_SECONDS {
@@ -396,6 +359,10 @@ fn animate_fades(
             continue; // fully dithered in — nothing to animate
         }
         fade.value = (fade.value + step).min(1.0);
+        if fade.value >= 1.0 {
+            // Fully opaque now: start casting a shadow (self-shadowing terrain).
+            commands.entity(entity).remove::<NotShadowCaster>();
+        }
         if let Some(material) = materials.get_mut(&material.0) {
             material.extension.fade = fade.value;
         }

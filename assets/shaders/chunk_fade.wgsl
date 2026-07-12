@@ -19,8 +19,9 @@ struct ChunkFade {
 @group(#{MATERIAL_BIND_GROUP}) @binding(101) var terrain_tex: texture_2d_array<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(102) var terrain_sampler: sampler;
 
-// World units per texture tile (the 32px texture repeats every 1/scale units).
-const TEX_SCALE: f32 = 0.5;
+// UV scale: the 32x32 texture repeats every 1/scale world units. 1.0 = one 32x32
+// tile per unit.
+const TEX_SCALE: f32 = 1.0;
 
 // 4x4 ordered (Bayer) dither threshold in (0, 1) for the given framebuffer pixel.
 fn dither_threshold(frag: vec2<f32>) -> f32 {

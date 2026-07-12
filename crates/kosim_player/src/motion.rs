@@ -4,7 +4,7 @@ use avian3d::{math::{AdjustPrecision, AsF32}, prelude::{
 use bevy::{
     color::palettes::tailwind, ecs::{
         component::Component, entity::{Entity, EntityHashSet}, query::With, system::{Query, Res}
-    }, gizmos::gizmos::Gizmos, input::{ButtonInput, keyboard::KeyCode}, log::{trace, warn}, math::{EulerRot, Quat, Vec3}, prelude::{Deref, DerefMut}, time::Time, transform::components::Transform
+    }, gizmos::gizmos::Gizmos, input::{ButtonInput, keyboard::KeyCode}, log::{trace, warn}, math::{Quat, Vec3}, prelude::{Deref, DerefMut}, time::Time, transform::components::Transform
 };
 use kosim_input::input::Input;
 use kosim_utility::{
@@ -15,7 +15,9 @@ use kosim_utility::{
 
 use crate::{
     Player,
-    config::PlayerControlConfig, stance::{Stance, StanceType},
+    config::PlayerControlConfig,
+    gravity::{PlanetGravity, up_at},
+    stance::{Stance, StanceType},
 };
 
 #[derive(Component)]
@@ -34,6 +36,7 @@ pub fn player_motion_system(
     >,
     player_config: Res<PlayerControlConfig>,
     input: Res<Input>,
+    gravity: Res<PlanetGravity>,
     time: Res<Time>,
 ) {
     if player_query.is_empty() || player_query.iter().len() > 1 {
@@ -104,14 +107,18 @@ pub fn player_motion_system(
         format_value_vec3(motion.movement_vector.current, Some(4), true),
     );
 
-    // * APPLY MOVEMENT_VECTOR TO PLAYER TRANSFORM LINEAR VELOCITY
+    // * APPLY MOVEMENT_VECTOR TO PLAYER LINEAR VELOCITY (tangent to the planet)
 
-    // We don't need to lerp here just setting the real value to as we already lerp the current_movement_vector and current_movement_speed.
+    // `movement_vector` is built from the player's forward/right, which lie on the
+    // tangent plane now that the capsule is radially aligned, so it is already a
+    // surface (tangential) velocity direction. We keep the radial velocity (owned by
+    // the ride spring / gravity) and only drive the tangential part.
+    let up = up_at(player_transform.translation, gravity.center);
+    let radial_speed = linear_velocity.0.dot(up);
+
     if stance.current == StanceType::Standing {
-        motion.linear_velocity_interp.target.x =
-            motion.movement_vector.current.x * motion.movement_speed.current;
-        motion.linear_velocity_interp.target.z =
-            motion.movement_vector.current.z * motion.movement_speed.current;
+        let target = motion.movement_vector.current * motion.movement_speed.current;
+        motion.linear_velocity_interp.target = target;
     } else {
         const PI: f32 = 3.1459;
         const SCALE: f32 = 0.2;
@@ -126,17 +133,8 @@ pub fn player_motion_system(
             ((1f32 - f32::cos(0.5 * PI * dot - 0.5 * PI)) / (2.0 - SCALE)) + OFFSET;
         let final_air_time: f32 = motion.movement_speed.current * air_time_scale;
 
-        trace!(
-            "final air time movement speed: {}, dot: {}, air scale: {}",
-            format_value_f32(final_air_time, Some(3), true),
-            format_value_f32(dot, Some(3), true),
-            format_value_f32(air_time_scale, Some(3), true)
-        );
-
-        motion.linear_velocity_interp.target.x +=
-            motion.movement_vector.current.x * final_air_time * time.delta_secs();
-        motion.linear_velocity_interp.target.z +=
-            motion.movement_vector.current.z * final_air_time * time.delta_secs();
+        let delta = motion.movement_vector.current * final_air_time * time.delta_secs();
+        motion.linear_velocity_interp.target += delta;
     }
 
     motion.linear_velocity_interp.current = exp_decay::<Vec3>(
@@ -146,9 +144,11 @@ pub fn player_motion_system(
         time.delta_secs(),
     );
 
-    // We set the actual linear velocity to the current value of the interpolated linear velocity.
-    linear_velocity.x = motion.linear_velocity_interp.current.x;
-    linear_velocity.z = motion.linear_velocity_interp.current.z;
+    // Strip any radial drift from the interpolated (tangential) velocity, then
+    // recombine with the preserved radial speed.
+    let tangential = motion.linear_velocity_interp.current
+        - up * motion.linear_velocity_interp.current.dot(up);
+    linear_velocity.0 = up * radial_speed + tangential;
 
     trace!(
         "Interpolated Linear Velocity: {{ current {} -> target {} }}",
@@ -166,20 +166,30 @@ pub fn player_rotation_system(
     mut player_query: Query<&mut Transform, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     input: Res<Input>,
+    gravity: Res<PlanetGravity>,
 ) {
     for mut player_transform in player_query.iter_mut() {
-        // Get the current rotation components.
-        let (mut player_yaw, player_pitch, player_roll) =
-            player_transform.rotation.to_euler(EulerRot::default());
+        // The capsule's up is radial; its facing is a heading on the tangent plane.
+        let up = up_at(player_transform.translation, gravity.center);
 
-        // Ensure the player is not holding down the free look key.
+        // Re-project the current facing onto the (possibly re-oriented) tangent plane.
+        let mut forward = player_transform.forward().as_vec3();
+        forward -= up * forward.dot(up);
+        if forward.length_squared() < 1.0e-6 {
+            // Facing was along `up`; fall back to the current right vector.
+            forward = player_transform.right().as_vec3();
+            forward -= up * forward.dot(up);
+        }
+        forward = forward.normalize_or(Vec3::Z);
+
+        // Yaw about `up` from mouse look (unless free-look is held).
         if !keys.pressed(KeyCode::AltLeft) {
-            player_yaw -= (input.focus_delta_raw.x).to_radians();
+            let yaw = -input.focus_delta_raw.x.to_radians();
+            forward = Quat::from_axis_angle(up, yaw) * forward;
         }
 
-        // Apply the current rotation.
-        player_transform.rotation =
-            Quat::from_euler(EulerRot::default(), player_yaw, player_pitch, player_roll);
+        // Build a rotation whose local up is `up` and whose -Z is `forward`.
+        player_transform.rotation = Transform::IDENTITY.looking_to(forward, up).rotation;
     }
 }
 
@@ -189,16 +199,18 @@ pub fn apply_spring_force(
     constant_force: &mut ConstantForce,
     ray_length: f32,
     ride_height: f32,
+    up: Vec3,
 ) {
-    // Find the diference between how close the capsule is to the surface beneath it.
-    // Compute this value by subtracting the ray length from the set ride height
-    // to find the diference in position.
-    let spring_offset: f32 = f32::abs(ray_length) - ride_height;
-    let spring_force: f32 = (spring_offset * config.ride_spring_strength)
-        - (-linear_velocity.0.y * config.ride_spring_damper);
+    // Difference between how far the capsule floats above the surface and its target
+    // ride height, along the radial "up".
+    let spring_offset: f32 = ray_length - ride_height;
+    // Velocity component along `up` (away from the planet), damped so the body settles.
+    let radial_velocity: f32 = linear_velocity.0.dot(up);
+    let spring_force: f32 =
+        spring_offset * config.ride_spring_strength + radial_velocity * config.ride_spring_damper;
 
-    /* Now we apply our spring force vector in the direction to return the bodies distance from the ground towards RIDE_HEIGHT. */
-    constant_force.0.y = -spring_force;
+    // Push the body back toward its ride height along `up`.
+    constant_force.0 = -up * spring_force;
 
     trace!(
         "Applying Spring Force: {} (ray_length: {}, ride_height: {})",
@@ -230,6 +242,7 @@ pub fn run_move_and_slide(
         With<Player>,
     >,
     move_and_slide: MoveAndSlide,
+    gravity: Res<PlanetGravity>,
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
@@ -286,10 +299,12 @@ pub fn run_move_and_slide(
         // intact so they travel along the slope surface as intended.
         let grounded: bool =
             matches!(stance.current, StanceType::Standing | StanceType::Landing);
+        let up = up_at(transform.translation, gravity.center);
         let mut resolved_velocity = projected_velocity;
         if grounded && !motion.moving {
-            resolved_velocity.x = 0.0;
-            resolved_velocity.z = 0.0;
+            // Keep only the radial component so the ride spring still settles the
+            // body; drop the tangential downhill creep the surface projection adds.
+            resolved_velocity = up * resolved_velocity.dot(up);
         }
         lin_vel.0 = resolved_velocity;
     }

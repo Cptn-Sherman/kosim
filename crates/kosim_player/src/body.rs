@@ -10,6 +10,7 @@ use bevy::{
     },
     log::trace,
     math::Vec3,
+    transform::components::Transform,
     time::Time,
 };
 use kosim_utility::{
@@ -21,7 +22,9 @@ use kosim_utility::{
 use crate::{
     Player,
     config::PlayerControlConfig,
-    motion::apply_spring_force, stance::{Stance, StanceType},
+    gravity::{PlanetGravity, up_at},
+    motion::apply_spring_force,
+    stance::{Stance, StanceType},
 };
 
 #[derive(Component)]
@@ -94,26 +97,29 @@ pub fn compute_ray_length(
 pub fn apply_standing_spring_force(
     mut query: Query<(
         Entity,
+        &Transform,
         &LinearVelocity,
         &mut ConstantForce,
         &mut StandingSpringForce,
-        &mut GravityScale,
+        &Mass,
         &ShapeHits,
     )>,
     config: Res<PlayerControlConfig>,
+    gravity: Res<PlanetGravity>,
     ignored_entities: Query<Entity, With<IgnoreRayCollision>>,
     time: Res<Time>,
 ) {
     for (
         entity,
+        transform,
         linear_velocity,
         mut constant_force,
         mut standing_spring_force,
-        mut gravity_scale,
+        mass,
         ray_hits,
     ) in &mut query
     {
-        // Compute the ray_length to a hit, if we don't hit anything we assume the ground is infinitly far away.
+        // Distance to the ground along the (radial) probe; infinite if nothing hit.
         let ray_length: f32 = compute_ray_length(entity, ignored_entities, ray_hits);
 
         // Lerp current_ride_height to target_ride_height, this target_ride_height changes depending on the stance. Standing, Crouching, and Prone.
@@ -124,29 +130,30 @@ pub fn apply_standing_spring_force(
             time.delta_secs(),
         );
 
-        // Todo: We should limit detecting landing unless the ray_length is now LESS than the current length (NOT INCLUDING MAX EXTENSION).
-
         let ride_height: f32 = standing_spring_force.length.current;
         let max_ray_length: f32 =
             standing_spring_force.length.current + standing_spring_force.extension;
+
+        // Everything is relative to the direction away from the planet centre.
+        let up = up_at(transform.translation, gravity.center);
         if ray_length <= max_ray_length {
-            gravity_scale.0 = 0.0f32;
+            // Grounded: the ride spring pushes the body to its float height along `up`.
             apply_spring_force(
                 &config,
                 linear_velocity,
                 &mut constant_force,
                 ray_length,
                 ride_height,
+                up,
             );
         } else {
-            constant_force.0 = Vec3::ZERO;
-            gravity_scale.0 = 1.0f32;
+            // Airborne: pull toward the planet centre (F = m * g * -up).
+            constant_force.0 = -up * (mass.0 * gravity.strength);
         }
         trace!(
             "Constant Force: {}",
             format_value_vec3(constant_force.0, Some(3), true)
         );
-        trace!("Gravity Scale: {}", gravity_scale.0);
     }
 }
 

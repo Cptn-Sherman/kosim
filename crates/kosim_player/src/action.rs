@@ -18,7 +18,7 @@ use kosim_utility::format_value::{format_value_f32, format_value_vec3};
 
 use crate::{
     Player, PlayerControlConfig,
-    body::{Body, IgnoreRayCollision, PlayerColliderFlag, StandingSpringForce, compute_ray_length},
+    body::{Body, IgnoreRayCollision, StandingSpringForce, compute_ray_length},
     motion::Motion,
     stance::{Stance, StanceType},
 };
@@ -79,7 +79,7 @@ pub fn apply_jump_force(
     ray_length: f32,
     stance: &mut Stance,
     standing_spring: &mut StandingSpringForce,
-    motion: &Motion,
+    _motion: &Motion,
     body: &Body,
 ) {
     // Apply the stance cooldown now that we are jumping.
@@ -96,14 +96,9 @@ pub fn apply_jump_force(
     // maybe instead of half the strength getting added to the up we added it directionally only so you always jump x height but can
     // use more of the timing to aid in forward momentum.
 
-    // find the movement vector in the x and z direction.
-    let jump_direction: Vec3 = motion
-        .movement_vector
-        .current
-        .mul_add(Vec3::ONE, Vec3::from_array([0.0, 1.0, 0.0]))
-        .normalize_or_zero();
-
-    let impulse_vec: Vec3 = jump_direction * player_config.jump_strength;
+    // Jump along the capsule's *local* up, which is radial up (away from the planet
+    // centre) because the body is aligned to the surface — so jumping works anywhere.
+    let impulse_vec: Vec3 = Vec3::Y * player_config.jump_strength;
 
     info!(
         "impulse_vec: {}",
@@ -188,7 +183,9 @@ pub struct Crouch;
 
 pub fn detect_action_crouching(
     mut player_query: Query<(&mut Body, &mut Stance), With<Player>>,
-    mut player_collider_query: Query<&mut Collider, With<PlayerColliderFlag>>, // , (With<PlayerCollider>, With<PlayerColliderFlag>, Without<Player>)
+    // The player's capsule collider lives on the Player entity itself (there is no
+    // separate flagged collider entity), so target that.
+    mut player_collider_query: Query<&mut Collider, With<Player>>,
     player_config: ResMut<PlayerControlConfig>,
     gamepad_query: Query<(Entity, &Gamepad)>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -212,7 +209,9 @@ pub fn detect_action_crouching(
             return;
         }
 
-        let mut collider = player_collider_query.single_mut().unwrap();
+        let Ok(mut collider) = player_collider_query.single_mut() else {
+            return;
+        };
 
         // Toggle crouching flag
         stance.crouched = !stance.crouched;

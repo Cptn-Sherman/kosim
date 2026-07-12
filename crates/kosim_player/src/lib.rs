@@ -15,8 +15,8 @@ use bevy::{
     },
     input::{gamepad::GamepadButton, keyboard::KeyCode},
     log::{info, warn},
-    math::{Dir3, Quat, Vec3, primitives::Sphere},
-    mesh::{Mesh, Mesh3d, Meshable},
+    math::{Dir3, Quat, Vec3, primitives::Capsule3d},
+    mesh::{Mesh, Mesh3d},
     pbr::{MeshMaterial3d, StandardMaterial},
     transform::components::Transform,
     utils::default,
@@ -56,6 +56,7 @@ pub mod config;
 pub mod debug;
 pub mod focus;
 pub mod freecam;
+pub mod gravity;
 pub mod motion;
 pub mod stance;
 
@@ -65,6 +66,10 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerControlConfig::default()); // later we will load from some toml file
         app.init_resource::<crate::freecam::FreeCam>();
+        app.init_resource::<crate::gravity::PlanetGravity>();
+        // Point gravity: disable Avian's global (down) gravity; the player is pulled
+        // radially toward the planet centre by `apply_standing_spring_force`.
+        app.insert_resource(Gravity(Vec3::ZERO));
         app.add_plugins(EnhancedInputPlugin)
             .add_input_context::<Player>();
         app.add_systems(
@@ -157,9 +162,9 @@ pub fn spawn_player(
                 linear_velocity: LinearVelocity::from(Vec3::ZERO),
                 impulse_force: ConstantLinearAcceleration::new(0.0, 0.0, 0.0),
                 gravity_scale: GravityScale(1.0),
-                // Above the planet's north pole (surface ~y=54); the player falls
-                // onto it. Point gravity that lets you stand anywhere is Phase 4b.
-                transform: Transform::from_xyz(0.0, 60.0, 0.0),
+                // Just above the planet's north pole (surface ~y=430, up to ~473 with
+                // the noise relief) so the player settles onto it gently.
+                transform: Transform::from_xyz(0.0, 478.0, 0.0),
                 // Probe the ground with a sphere the width of the capsule instead
                 // of a thin ray, so the body floats clear of the tallest surface
                 // under its whole footprint (see `GROUND_PROBE_RADIUS`). Defaults
@@ -213,7 +218,9 @@ pub fn spawn_player(
                     extension: player_config.ray_length_offset,
                 },
             },
-            Mesh3d(meshes.add(Sphere::new(0.2).mesh().ico(8).unwrap())),
+            // Draw the actual capsule (matches the collider) so it visibly stands on
+            // the surface instead of a floating marker dot.
+            Mesh3d(meshes.add(Capsule3d::new(0.5, 1.0))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::srgb(1.0, 200.0 / 256.0, 0.0),
                 ..default()
