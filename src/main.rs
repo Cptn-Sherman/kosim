@@ -8,8 +8,13 @@ use bevy::{
     color::palettes::tailwind::{AMBER_400, SKY_400, ZINC_200},
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
     light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, SunDisk},
+    pbr::wireframe::{WireframeConfig, WireframePlugin},
     prelude::*,
-    render::render_asset::RenderAssetBytesPerFrame,
+    render::{
+        RenderPlugin,
+        render_asset::RenderAssetBytesPerFrame,
+        settings::{RenderCreation, WgpuFeatures, WgpuSettings},
+    },
 };
 use bevy_infinite_grid::{InfiniteGridBundle, InfiniteGridPlugin};
 use bevy_kira_audio::{Audio, AudioControl, AudioEasing, AudioPlugin, AudioTween};
@@ -33,7 +38,16 @@ fn main() {
         })
         .insert_resource(Input::default())
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(RenderPlugin {
+                // Wireframe rendering (the F4 debug toggle) needs line polygon
+                // mode, a native-only wgpu feature.
+                render_creation: RenderCreation::Automatic(WgpuSettings {
+                    features: WgpuFeatures::POLYGON_MODE_LINE,
+                    ..default()
+                }),
+                ..default()
+            }),
+            WireframePlugin::default(),
             KosimInputPlugin,
             KosimCameraPlugin,
             KosimInterfacePlugin,
@@ -67,8 +81,19 @@ fn main() {
             (setup, start_background_audio).chain(),
         )
         .add_systems(Startup, configure_physics_gizmos)
-        .add_systems(Update, (close_on_key,))
+        .add_systems(Update, (close_on_key, toggle_wireframe))
         .run();
+}
+
+// Toggle global wireframe rendering (all meshes) with the bound hotkey (F4).
+fn toggle_wireframe(
+    input: Res<ButtonInput<KeyCode>>,
+    key_bindings: Res<Bindings>,
+    mut config: ResMut<WireframeConfig>,
+) {
+    if input.just_pressed(key_bindings.action_toggle_wireframe) {
+        config.global = !config.global;
+    }
 }
 
 // The terrain collider is a ~1M-triangle static trimesh. Avian's PhysicsDebugPlugin

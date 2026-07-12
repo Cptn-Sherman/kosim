@@ -27,6 +27,7 @@ pub struct Bindings {
     pub action_screenshot: Binding,
     pub action_toggle_cursor_focus: KeyCode,
     pub action_toggle_camera_mode: KeyCode,
+    pub action_toggle_wireframe: KeyCode,
     pub action_close_application: KeyCode,
 }
 
@@ -57,6 +58,7 @@ impl Default for Bindings {
                 button: GamepadButton::Start,
             },
             action_toggle_camera_mode: KeyCode::F3,
+            action_toggle_wireframe: KeyCode::F4,
             action_close_application: KeyCode::Delete,
             action_enable_freelook: Binding {
                 key: KeyCode::AltLeft,
