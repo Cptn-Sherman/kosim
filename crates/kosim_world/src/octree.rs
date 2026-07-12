@@ -63,6 +63,24 @@ impl OctNode {
         }
     }
 
+    /// The voxel at local coordinate `(x, y, z)`, or `None` if it is empty or
+    /// outside `[0, size)`. Used by the mesher to colour a surface vertex from
+    /// the material of the solid voxel it borders.
+    pub fn voxel_at(&self, x: i64, y: i64, z: i64, size: i64) -> Option<Voxel> {
+        if x < 0 || y < 0 || z < 0 || x >= size || y >= size || z >= size {
+            return None;
+        }
+        match self {
+            OctNode::Empty => None,
+            OctNode::Leaf(v) => Some(*v),
+            OctNode::Branch(children) => {
+                let half = size / 2;
+                let (idx, cx, cy, cz) = Self::child_index(x, y, z, half);
+                children[idx].voxel_at(cx, cy, cz, half)
+            }
+        }
+    }
+
     /// Is every voxel in this node solid (no `Empty` anywhere in the subtree)?
     pub fn is_full_solid(&self) -> bool {
         match self {

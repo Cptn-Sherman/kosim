@@ -1,218 +1,248 @@
-//! Camera-driven level-of-detail traversal and cube meshing.
+//! Isosurface meshing of the binary voxel world (Phase 1: single full-resolution
+//! LOD via grid-aligned marching cubes).
 //!
-//! The octree is walked from the root. For each node we compute a screen-relative
-//! size (`world_size / distance_to_camera`). Nodes that are large relative to
-//! their distance (i.e. close to the camera) are subdivided for more detail;
-//! nodes that are small (far away) are emitted as a single coarse cube. A merged
-//! `Leaf` is always emitted whole, since it holds no finer detail.
+//! Each *marching cell* spans eight neighbouring voxel *centres*; its 8-bit corner
+//! occupancy mask indexes [`crate::tables`] to pick the triangulation. Every output
+//! vertex sits at the exact midpoint of the cell edge it lies on -- the `t = 0.5`
+//! case, never interpolated by a density value -- so the surface is grid-aligned to
+//! the half-voxel lattice and passes cleanly through the faces between solid and
+//! empty voxels.
 //!
-//! Cube faces are culled against the world: a face is skipped when the equally
-//! sized neighbour on that side is solid, which removes the interior of the
-//! terrain and leaves only the visible shell.
+//! Because the placement is exact, a vertex is identified by an integer lattice key
+//! (`voxel_a + voxel_b`, the sum of the two corner coordinates it bridges). That
+//! welds shared vertices with no floating-point tolerance and, later, gives the
+//! exact fine/coarse correspondence the HVT geomorph (Phase 3) needs.
+//!
+//! Camera-driven level of detail and Transvoxel transition cells return in Phase 2;
+//! for now the whole world is meshed once at leaf resolution.
+
+use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::math::{IVec3, Vec3};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 
 use crate::VoxelWorld;
-use crate::octree::OctNode;
-use crate::voxel::Voxel;
+use crate::tables::{CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE};
 
-/// The six axis-aligned face directions as `(normal, four CCW corner offsets)`
-/// in unit-cube space. Corners are wound counter-clockwise when viewed from
-/// outside so the default front-face culling keeps them.
-struct Face {
-    normal: [f32; 3],
-    corners: [[f32; 3]; 4],
+/// A finished terrain mesh plus the buffers needed to build a matching physics
+/// collider. The collider shares the mesh's welded vertices and triangle winding,
+/// so physics lines up exactly with what is drawn.
+pub struct TerrainMesh {
+    pub mesh: Mesh,
+    pub collider_vertices: Vec<Vec3>,
+    pub collider_indices: Vec<[u32; 3]>,
 }
 
-const FACES: [Face; 6] = [
-    // +X
-    Face {
-        normal: [1.0, 0.0, 0.0],
-        corners: [
-            [1.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [1.0, 1.0, 1.0],
-        ],
-    },
-    // -X
-    Face {
-        normal: [-1.0, 0.0, 0.0],
-        corners: [
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 1.0, 1.0],
-            [0.0, 1.0, 0.0],
-        ],
-    },
-    // +Y
-    Face {
-        normal: [0.0, 1.0, 0.0],
-        corners: [
-            [0.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ],
-    },
-    // -Y
-    Face {
-        normal: [0.0, -1.0, 0.0],
-        corners: [
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-        ],
-    },
-    // +Z
-    Face {
-        normal: [0.0, 0.0, 1.0],
-        corners: [
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [0.0, 1.0, 1.0],
-        ],
-    },
-    // -Z
-    Face {
-        normal: [0.0, 0.0, -1.0],
-        corners: [
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-        ],
-    },
-];
-
-/// Accumulates geometry for the terrain mesh.
+/// Accumulates welded isosurface geometry.
 #[derive(Default)]
 struct MeshBuilder {
-    positions: Vec<[f32; 3]>,
-    normals: Vec<[f32; 3]>,
+    positions: Vec<Vec3>,
+    /// Area-weighted face-normal sums; normalised in [`Self::finish`].
+    normals: Vec<Vec3>,
     colors: Vec<[f32; 4]>,
     indices: Vec<u32>,
+    /// Integer lattice key -> index into the vertex arrays.
+    vertex_map: HashMap<IVec3, u32>,
 }
 
 impl MeshBuilder {
-    /// Emit the visible faces of one cube. `min_world` is the cube's minimum
-    /// corner in world space, `world_size` its edge length. `cull` reports
-    /// whether the neighbouring cell in a given direction is solid (and hence
-    /// the shared face should be skipped).
-    fn push_cube(
-        &mut self,
-        min_world: Vec3,
-        world_size: f32,
-        voxel: Voxel,
-        mut cull: impl FnMut([f32; 3]) -> bool,
-    ) {
-        let color = voxel.material.linear_rgba();
-        for face in &FACES {
-            if cull(face.normal) {
-                continue;
-            }
-            let base = self.positions.len() as u32;
-            for corner in &face.corners {
-                self.positions.push([
-                    min_world.x + corner[0] * world_size,
-                    min_world.y + corner[1] * world_size,
-                    min_world.z + corner[2] * world_size,
-                ]);
-                self.normals.push(face.normal);
-                self.colors.push(color);
-            }
-            self.indices
-                .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    /// Fetch or create the welded vertex at lattice `key`, positioned at `pos`
+    /// with surface `color`. The colour is taken from the first cell to emit the
+    /// vertex; that is good enough while terrain is vertex-coloured (texturing is
+    /// Phase 5).
+    fn vertex(&mut self, key: IVec3, pos: Vec3, color: [f32; 4]) -> u32 {
+        if let Some(&idx) = self.vertex_map.get(&key) {
+            return idx;
         }
+        let idx = self.positions.len() as u32;
+        self.positions.push(pos);
+        self.normals.push(Vec3::ZERO);
+        self.colors.push(color);
+        self.vertex_map.insert(key, idx);
+        idx
     }
 
-    fn into_mesh(self) -> Mesh {
+    /// Emit one triangle. Vertices are passed in the table's winding order, which
+    /// yields an outward (CCW-from-air) face. The unnormalised cross product is
+    /// added to each corner so vertex normals come out area-weighted and smooth.
+    fn triangle(&mut self, a: (IVec3, Vec3, [f32; 4]), b: (IVec3, Vec3, [f32; 4]), c: (IVec3, Vec3, [f32; 4])) {
+        let ia = self.vertex(a.0, a.1, a.2);
+        let ib = self.vertex(b.0, b.1, b.2);
+        let ic = self.vertex(c.0, c.1, c.2);
+        // Degenerate triangles never occur: the three edges of a marching-cubes
+        // case are always distinct, and distinct edges have distinct midpoints.
+        let face_normal = (b.1 - a.1).cross(c.1 - a.1);
+        self.normals[ia as usize] += face_normal;
+        self.normals[ib as usize] += face_normal;
+        self.normals[ic as usize] += face_normal;
+        self.indices.extend_from_slice(&[ia, ib, ic]);
+    }
+
+    fn finish(self) -> TerrainMesh {
+        let MeshBuilder {
+            positions,
+            normals,
+            colors,
+            indices,
+            ..
+        } = self;
+
+        let normals: Vec<[f32; 3]> = normals
+            .iter()
+            .map(|n| n.normalize_or_zero().to_array())
+            .collect();
+        let collider_vertices = positions.clone();
+        let collider_indices: Vec<[u32; 3]> =
+            indices.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect();
+
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::RENDER_WORLD,
         );
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.positions);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.colors);
-        mesh.insert_indices(Indices::U32(self.indices));
-        mesh
-    }
-}
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            positions.iter().map(|p| p.to_array()).collect::<Vec<_>>(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+        mesh.insert_indices(Indices::U32(indices));
 
-/// Build a level-of-detail terrain mesh for `world` as seen from `camera_pos`
-/// (world space).
-pub fn build_lod_mesh(world: &VoxelWorld, camera_pos: Vec3) -> Mesh {
-    let mut builder = MeshBuilder::default();
-    collect(world, &world.root, IVec3::ZERO, world.dim, camera_pos, &mut builder);
-    builder.into_mesh()
-}
-
-/// Should a node of `world_size` at `center` (world space) be subdivided for
-/// more detail, rather than drawn as a single cube?
-fn should_subdivide(world: &VoxelWorld, center: Vec3, world_size: f32, camera_pos: Vec3) -> bool {
-    let dist = center.distance(camera_pos).max(1.0e-3);
-    world_size / dist > world.config.lod_threshold
-}
-
-/// Recursively gather visible cubes for `node`, whose minimum corner is `min`
-/// (voxel coords) and whose edge length is `size` voxels.
-fn collect(
-    world: &VoxelWorld,
-    node: &OctNode,
-    min: IVec3,
-    size: i64,
-    camera_pos: Vec3,
-    builder: &mut MeshBuilder,
-) {
-    match node {
-        OctNode::Empty => {}
-        OctNode::Leaf(voxel) => emit_cube(world, min, size, *voxel, builder),
-        OctNode::Branch(children) => {
-            let mvs = world.config.min_voxel_size;
-            let world_size = size as f32 * mvs;
-            let center = world.config.origin
-                + (min.as_vec3() + Vec3::splat(size as f32 * 0.5)) * mvs;
-
-            if size > 1 && should_subdivide(world, center, world_size, camera_pos) {
-                let half = (size / 2) as i32;
-                for (i, child) in children.iter().enumerate() {
-                    let offset = IVec3::new(
-                        (i & 1) as i32 * half,
-                        ((i >> 1) & 1) as i32 * half,
-                        ((i >> 2) & 1) as i32 * half,
-                    );
-                    collect(world, child, min + offset, size / 2, camera_pos, builder);
-                }
-            } else if let Some(voxel) = node.representative() {
-                // Far enough away (or unsplittable): draw the whole branch as one
-                // coarse cube.
-                emit_cube(world, min, size, voxel, builder);
-            }
+        TerrainMesh {
+            mesh,
+            collider_vertices,
+            collider_indices,
         }
     }
 }
 
-/// Emit a single cube spanning voxels `[min, min+size)`, culling a face only when
-/// the equally sized neighbour on that side is *fully* solid (and therefore
-/// certain to cover it). Culling against a single sample voxel instead leaves
-/// see-through holes at LOD seams and surface steps.
-fn emit_cube(world: &VoxelWorld, min: IVec3, size: i64, voxel: Voxel, builder: &mut MeshBuilder) {
-    let mvs = world.config.min_voxel_size;
-    let min_world = world.config.origin + min.as_vec3() * mvs;
-    let world_size = size as f32 * mvs;
+/// Build the full-resolution isosurface mesh (and matching collider buffers) for
+/// `world`.
+pub fn build_terrain_mesh(world: &VoxelWorld) -> TerrainMesh {
+    let mut builder = MeshBuilder::default();
+    let dim = world.dim;
 
-    builder.push_cube(min_world, world_size, voxel, |normal| {
-        // The equally sized neighbour block on this side.
-        let neighbour = min
-            + IVec3::new(
-                normal[0] as i32 * size as i32,
-                normal[1] as i32 * size as i32,
-                normal[2] as i32 * size as i32,
+    // Marching cells sit *between* voxel centres, so a cell at `c` samples voxels
+    // `c + corner`. Ranging `c` over `-1..dim` lets the outermost cells reach the
+    // shell voxels (0 and dim-1); out-of-range samples read as empty, closing the
+    // surface at the world boundary.
+    for cx in -1..dim {
+        for cy in -1..dim {
+            for cz in -1..dim {
+                mesh_cell(world, IVec3::new(cx as i32, cy as i32, cz as i32), &mut builder);
+            }
+        }
+    }
+
+    builder.finish()
+}
+
+/// Mesh a single marching cell whose minimum-corner voxel is `cell`.
+fn mesh_cell(world: &VoxelWorld, cell: IVec3, builder: &mut MeshBuilder) {
+    // Corner occupancy -> case mask. Bit `i` is set when corner `i` is solid.
+    let mut mask = 0u8;
+    let mut corner_voxel = [IVec3::ZERO; 8];
+    for i in 0..8 {
+        let v = cell + CORNER_OFFSETS[i];
+        corner_voxel[i] = v;
+        if world.is_solid_voxel(v.x as i64, v.y as i64, v.z as i64) {
+            mask |= 1 << i;
+        }
+    }
+
+    let edges = EDGE_TABLE[mask as usize];
+    if edges == 0 {
+        return;
+    }
+
+    let mvs = world.config.min_voxel_size;
+    let origin = world.config.origin;
+    // Build the (key, position, colour) for the vertex on cube edge `e`.
+    let edge_vertex = |e: usize| -> (IVec3, Vec3, [f32; 4]) {
+        let [ca, cb] = EDGE_CORNERS[e];
+        let va = corner_voxel[ca];
+        let vb = corner_voxel[cb];
+        // Exact integer key: the sum of the two bridged voxel coordinates.
+        let key = va + vb;
+        // World midpoint of the two voxel *centres* (`centre = origin + (v+0.5)*mvs`).
+        let pos = origin + (key.as_vec3() * 0.5 + Vec3::splat(0.5)) * mvs;
+        // Colour from whichever corner is solid (a crossed edge has exactly one).
+        let solid = if (mask & (1 << ca)) != 0 { va } else { vb };
+        let color = world
+            .voxel_material(solid.x as i64, solid.y as i64, solid.z as i64)
+            .map(|m| m.linear_rgba())
+            .unwrap_or([1.0, 0.0, 1.0, 1.0]);
+        (key, pos, color)
+    };
+
+    let tri = &TRI_TABLE[mask as usize];
+    let mut i = 0;
+    while i < tri.len() && tri[i] != -1 {
+        let a = edge_vertex(tri[i] as usize);
+        let b = edge_vertex(tri[i + 1] as usize);
+        let c = edge_vertex(tri[i + 2] as usize);
+        builder.triangle(a, b, c);
+        i += 3;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::WorldConfig;
+    use crate::octree::OctNode;
+    use crate::voxel::{Voxel, VoxelMaterial};
+    use std::collections::HashMap;
+
+    /// A single solid voxel surrounded by air must mesh to a closed octahedron:
+    /// six face-midpoint vertices, eight triangles, every edge shared by exactly
+    /// two triangles, and every normal pointing away from the voxel centre. This
+    /// pins the corner offsets, both lookup tables, vertex welding, and winding.
+    #[test]
+    fn single_voxel_is_a_closed_outward_octahedron() {
+        let mut children: [OctNode; 8] = std::array::from_fn(|_| OctNode::Empty);
+        children[0] = OctNode::Leaf(Voxel::new(VoxelMaterial::Stone));
+        let world = VoxelWorld {
+            root: OctNode::Branch(Box::new(children)),
+            dim: 2,
+            config: WorldConfig {
+                min_voxel_size: 1.0,
+                max_depth: 1,
+                origin: Vec3::ZERO,
+                ..WorldConfig::default()
+            },
+        };
+
+        let terrain = build_terrain_mesh(&world);
+
+        assert_eq!(terrain.collider_vertices.len(), 6, "octahedron has 6 vertices");
+        assert_eq!(terrain.collider_indices.len(), 8, "octahedron has 8 faces");
+
+        // Closed manifold: each undirected edge appears in exactly two triangles.
+        let mut edge_uses: HashMap<(u32, u32), u32> = HashMap::new();
+        for tri in &terrain.collider_indices {
+            for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+                *edge_uses.entry((a.min(b), a.max(b))).or_default() += 1;
+            }
+        }
+        assert!(
+            edge_uses.values().all(|&n| n == 2),
+            "every edge should be shared by two triangles: {edge_uses:?}"
+        );
+
+        // Every face winds outward: its geometric normal points away from the
+        // voxel centre at (0.5, 0.5, 0.5).
+        let center = Vec3::splat(0.5);
+        for tri in &terrain.collider_indices {
+            let p0 = terrain.collider_vertices[tri[0] as usize];
+            let p1 = terrain.collider_vertices[tri[1] as usize];
+            let p2 = terrain.collider_vertices[tri[2] as usize];
+            let normal = (p1 - p0).cross(p2 - p0);
+            let outward = (p0 + p1 + p2) / 3.0 - center;
+            assert!(
+                normal.dot(outward) > 0.0,
+                "face {tri:?} winds inward (normal {normal:?}, outward {outward:?})"
             );
-        world.region_full_solid(neighbour, size)
-    });
+        }
+    }
 }

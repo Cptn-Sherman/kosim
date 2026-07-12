@@ -16,9 +16,11 @@ use bevy::prelude::*;
 pub mod generation;
 pub mod lod;
 pub mod octree;
+pub mod tables;
 pub mod voxel;
 
 use octree::OctNode;
+use voxel::VoxelMaterial;
 
 /// Default edge length of the smallest voxel, in world units.
 pub const DEFAULT_MIN_VOXEL_SIZE: f32 = 0.5;
@@ -86,6 +88,12 @@ impl VoxelWorld {
         self.root.is_solid(x, y, z, self.dim)
     }
 
+    /// Material of the voxel at `(x, y, z)`, or `None` if it is empty/outside.
+    #[inline]
+    pub fn voxel_material(&self, x: i64, y: i64, z: i64) -> Option<VoxelMaterial> {
+        self.root.voxel_at(x, y, z, self.dim).map(|v| v.material)
+    }
+
     /// Is the grid-aligned region `[min, min + size)` entirely solid? Regions
     /// that are not fully within the world are treated as not solid, so the outer
     /// shell of the world renders its faces.
@@ -122,23 +130,14 @@ impl VoxelWorld {
     }
 }
 
-/// Tracks the rendered terrain entity and the camera position it was built for.
-#[derive(Resource)]
-pub struct WorldRenderState {
-    pub entity: Entity,
-    pub mesh: Handle<Mesh>,
-    pub last_camera_pos: Vec3,
-}
-
-/// Registers the voxel world: generates the sample scene on startup and keeps
-/// its level of detail in sync with the camera.
+/// Registers the voxel world: generates the sample scene and its isosurface mesh
+/// on startup. Camera-driven level of detail returns in Phase 2.
 pub struct KosimWorldPlugin;
 
 impl Plugin for KosimWorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WorldConfig>()
-            .add_systems(Startup, setup_world)
-            .add_systems(Update, update_lod);
+            .add_systems(Startup, setup_world);
     }
 }
 
@@ -156,9 +155,15 @@ fn setup_world(
         mvs = config.min_voxel_size,
     );
 
-    // Initial mesh from the world origin; the LOD system refines it once the
-    // camera's transform has propagated.
-    let mesh = meshes.add(lod::build_lod_mesh(&world, config.origin));
+    // Grid-aligned marching-cubes isosurface over the binary voxel field. The
+    // vertex positions are already in world space (the mesher bakes in the world
+    // origin), so the entity transform is identity.
+    let terrain = lod::build_terrain_mesh(&world);
+    info!(
+        "kosim_world: isosurface mesh has {} vertices, {} triangles",
+        terrain.collider_vertices.len(),
+        terrain.collider_indices.len(),
+    );
 
     let material = materials.add(StandardMaterial {
         base_color: Color::WHITE,
@@ -167,59 +172,30 @@ fn setup_world(
         ..default()
     });
 
-    let entity = commands
-        .spawn((
-            Name::new("VoxelWorld"),
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material),
-            Transform::IDENTITY,
-        ))
-        .id();
-
-    // Full-resolution static collision. Unlike the visual mesh this does not
-    // follow the camera LOD: it is generated once from every solid voxel so
-    // physics is consistent everywhere. A parry `Voxels` collider places voxel
-    // `(x, y, z)` centred at `((x, y, z) + 0.5) * voxel_size` in local space, so
-    // translating the collider entity by the world origin aligns it exactly with
-    // the rendered terrain.
-    let coords = world.solid_voxel_coords();
-    info!(
-        "kosim_world: building voxel collider from {} solid voxels",
-        coords.len()
-    );
     commands.spawn((
-        Name::new("VoxelWorldCollider"),
-        RigidBody::Static,
-        Collider::voxels(Vec3::splat(config.min_voxel_size), &coords),
-        Transform::from_translation(config.origin),
+        Name::new("VoxelWorld"),
+        Mesh3d(meshes.add(terrain.mesh)),
+        MeshMaterial3d(material),
+        Transform::IDENTITY,
     ));
 
-    commands.insert_resource(WorldRenderState {
-        entity,
-        mesh,
-        last_camera_pos: config.origin,
-    });
+    // Static collider built from the *same* welded isosurface, so physics matches
+    // the rendered slopes exactly (the old parry `Voxels` collider was blocky
+    // cubes and would leave the player floating above the sloped surface). Vertex
+    // positions are already world-space, so the collider entity sits at the origin.
+    match Collider::try_trimesh(terrain.collider_vertices, terrain.collider_indices) {
+        Ok(collider) => {
+            commands.spawn((
+                Name::new("VoxelWorldCollider"),
+                RigidBody::Static,
+                collider,
+                Transform::IDENTITY,
+            ));
+        }
+        Err(err) => {
+            error!("kosim_world: failed to build terrain trimesh collider: {err:?}");
+        }
+    }
+
     commands.insert_resource(world);
-}
-
-fn update_lod(
-    world: Res<VoxelWorld>,
-    mut state: ResMut<WorldRenderState>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    camera: Query<&GlobalTransform, With<Camera3d>>,
-) {
-    let Ok(camera_transform) = camera.single() else {
-        return;
-    };
-    let camera_pos = camera_transform.translation();
-
-    if camera_pos.distance(state.last_camera_pos) < world.config.rebuild_distance {
-        return;
-    }
-    state.last_camera_pos = camera_pos;
-
-    let new_mesh = lod::build_lod_mesh(&world, camera_pos);
-    if let Some(mesh) = meshes.get_mut(&state.mesh) {
-        *mesh = new_mesh;
-    }
 }
