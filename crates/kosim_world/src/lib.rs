@@ -17,12 +17,14 @@ use avian3d::prelude::{Collider, RigidBody};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 
+pub mod fade;
 pub mod generation;
 pub mod lod;
 pub mod octree;
 pub mod tables;
 pub mod voxel;
 
+use fade::{ChunkFade, ChunkMaterial, FADE_SECONDS, Fade, RETIRE_SECONDS};
 use octree::OctNode;
 use voxel::VoxelMaterial;
 
@@ -154,32 +156,34 @@ pub struct TerrainChunk(pub lod::ChunkKey);
 #[derive(Resource)]
 pub struct ChunkManager {
     world: Arc<VoxelWorld>,
-    material: Handle<StandardMaterial>,
-    /// Chunks currently spawned, by key.
+    /// Chunks currently wanted and spawned, by key.
     active: HashMap<lod::ChunkKey, Entity>,
     /// Chunks whose mesh is being built off-thread.
     pending: HashMap<lod::ChunkKey, Task<Mesh>>,
+    /// Chunks that have left the desired set and are dissolving out before despawn.
+    retiring: HashMap<lod::ChunkKey, Entity>,
     /// Camera position the desired set was last computed for.
     last_camera_pos: Vec3,
 }
 
 /// Registers the voxel world: generates the sample scene and full-resolution static
-/// collider on startup, then streams camera-driven LOD chunks in and out.
+/// collider on startup, then streams camera-driven LOD chunks in and out with a
+/// dithered crossfade.
 pub struct KosimWorldPlugin;
 
 impl Plugin for KosimWorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WorldConfig>()
+            .add_plugins(MaterialPlugin::<ChunkMaterial>::default())
             .add_systems(Startup, setup_world)
-            .add_systems(Update, (schedule_chunk_meshing, apply_finished_chunks).chain());
+            .add_systems(
+                Update,
+                (schedule_chunk_meshing, apply_finished_chunks, animate_fades).chain(),
+            );
     }
 }
 
-fn setup_world(
-    mut commands: Commands,
-    config: Res<WorldConfig>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+fn setup_world(mut commands: Commands, config: Res<WorldConfig>) {
     let world = VoxelWorld::generate(config.clone());
     info!(
         "kosim_world: generated {dim}^3 voxel world ({size} units, {mvs}-unit voxels)",
@@ -187,13 +191,6 @@ fn setup_world(
         size = world.dim as f32 * config.min_voxel_size,
         mvs = config.min_voxel_size,
     );
-
-    let material = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        perceptual_roughness: 0.95,
-        metallic: 0.0,
-        ..default()
-    });
 
     // Static collider from the *full-resolution* isosurface (independent of the
     // visual LOD, so physics is consistent everywhere). Built from the same welded
@@ -221,9 +218,9 @@ fn setup_world(
 
     commands.insert_resource(ChunkManager {
         world: Arc::new(world),
-        material,
         active: HashMap::new(),
         pending: HashMap::new(),
+        retiring: HashMap::new(),
         // A sentinel far from any real camera forces a first pass on the first Update.
         last_camera_pos: Vec3::splat(f32::INFINITY),
     });
@@ -234,8 +231,8 @@ fn setup_world(
 /// newly wanted ones. Unchanged chunks are left untouched (the incremental win).
 fn schedule_chunk_meshing(
     mut manager: ResMut<ChunkManager>,
-    mut commands: Commands,
     camera: Query<&GlobalTransform, With<Camera3d>>,
+    mut fades: Query<&mut Fade>,
 ) {
     let Ok(camera_transform) = camera.single() else {
         return;
@@ -250,7 +247,8 @@ fn schedule_chunk_meshing(
         .into_iter()
         .collect();
 
-    // Despawn chunks and drop in-flight work that is no longer wanted.
+    // Active chunks that are no longer wanted start dissolving out (kept alive until
+    // fully faded so they cross-dissolve with their replacements).
     let stale: Vec<lod::ChunkKey> = manager
         .active
         .keys()
@@ -259,9 +257,32 @@ fn schedule_chunk_meshing(
         .collect();
     for key in stale {
         if let Some(entity) = manager.active.remove(&key) {
-            commands.entity(entity).despawn();
+            if let Ok(mut fade) = fades.get_mut(entity) {
+                fade.retiring = true;
+                fade.timer = 0.0;
+            }
+            manager.retiring.insert(key, entity);
         }
     }
+
+    // Chunks that were retiring but are wanted again: they are already opaque, so
+    // just make them active again.
+    let revived: Vec<lod::ChunkKey> = manager
+        .retiring
+        .keys()
+        .filter(|k| desired.contains(k))
+        .copied()
+        .collect();
+    for key in revived {
+        if let Some(entity) = manager.retiring.remove(&key) {
+            if let Ok(mut fade) = fades.get_mut(entity) {
+                fade.retiring = false;
+                fade.value = 1.0;
+            }
+            manager.active.insert(key, entity);
+        }
+    }
+
     manager.pending.retain(|key, _| desired.contains(key));
 
     // Spawn async meshing for newly wanted chunks.
@@ -277,11 +298,13 @@ fn schedule_chunk_meshing(
     }
 }
 
-/// Poll in-flight chunk meshes; spawn an entity for each one that finished this frame.
+/// Poll in-flight chunk meshes; spawn an entity for each one that finished this
+/// frame, starting it dissolving in from transparent.
 fn apply_finished_chunks(
     mut manager: ResMut<ChunkManager>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ChunkMaterial>>,
 ) {
     let mut finished: Vec<(lod::ChunkKey, Mesh)> = Vec::new();
     manager.pending.retain(|key, task| {
@@ -296,7 +319,17 @@ fn apply_finished_chunks(
 
     for (key, mesh) in finished {
         let handle = meshes.add(mesh);
-        let material = manager.material.clone();
+        // Each chunk owns its material so it can fade independently. Vertex colours
+        // carry the terrain material; base_color is white so they pass through.
+        let material = materials.add(ChunkMaterial {
+            base: StandardMaterial {
+                base_color: Color::WHITE,
+                perceptual_roughness: 0.95,
+                metallic: 0.0,
+                ..default()
+            },
+            extension: ChunkFade { fade: 0.0 },
+        });
         let entity = commands
             .spawn((
                 Name::new("TerrainChunk"),
@@ -304,11 +337,50 @@ fn apply_finished_chunks(
                 MeshMaterial3d(material),
                 Transform::IDENTITY,
                 TerrainChunk(key),
+                Fade {
+                    value: 0.0,
+                    retiring: false,
+                    timer: 0.0,
+                },
             ))
             .id();
         // Replace any prior entity for this key (e.g. a re-requested chunk).
         if let Some(old) = manager.active.insert(key, entity) {
             commands.entity(old).despawn();
+        }
+    }
+}
+
+/// Advance every chunk's dither fade. Chunks that finish fading out are despawned.
+fn animate_fades(
+    time: Res<Time>,
+    mut manager: ResMut<ChunkManager>,
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ChunkMaterial>>,
+    mut chunks: Query<(Entity, &TerrainChunk, &mut Fade, &MeshMaterial3d<ChunkMaterial>)>,
+) {
+    let step = time.delta_secs() / FADE_SECONDS;
+    for (entity, chunk, mut fade, material) in &mut chunks {
+        if fade.retiring {
+            // Opaque backing: snap to fully visible once, then just count down.
+            if fade.timer == 0.0
+                && let Some(material) = materials.get_mut(&material.0)
+            {
+                material.extension.fade = 1.0;
+            }
+            fade.timer += time.delta_secs();
+            if fade.timer >= RETIRE_SECONDS {
+                commands.entity(entity).despawn();
+                manager.retiring.remove(&chunk.0);
+            }
+            continue;
+        }
+        if fade.value >= 1.0 {
+            continue; // fully dithered in — nothing to animate
+        }
+        fade.value = (fade.value + step).min(1.0);
+        if let Some(material) = materials.get_mut(&material.0) {
+            material.extension.fade = fade.value;
         }
     }
 }
